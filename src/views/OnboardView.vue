@@ -87,6 +87,24 @@ async function removePage(p) {
   suite.value.pages = suite.value.pages.filter((x) => x.id !== p.id);
 }
 
+/** Links found by a scan, minus the pages already added. */
+const suggestions = computed(() => {
+  const have = new Set(suite.value?.pages.map((p) => p.path) ?? []);
+  const out = new Map();
+  for (const p of suite.value?.pages ?? []) {
+    for (const l of p.linked ?? []) if (!have.has(l.path) && !out.has(l.path)) out.set(l.path, l);
+  }
+  return [...out.values()].slice(0, 12);
+});
+
+async function addSuggested(l) {
+  busy.value = true; error.value = null;
+  try {
+    const { page } = await api.addPage(suite.value.id, { name: l.name, path: l.path });
+    suite.value.pages.push(page);
+  } catch (e) { error.value = e.message; } finally { busy.value = false; }
+}
+
 async function scan(p) {
   scanning.value = p.id; error.value = null;
   try {
@@ -256,6 +274,21 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
                     @click="removePage(p)" title="Remove">✕</button>
           </li>
         </ul>
+
+
+        <!-- What the app says its own pages are.
+             Reading them off the nav beats typing paths by hand, which is the
+             friction that ends with one page onboarded and the rest never done. -->
+        <template v-if="suggestions.length">
+          <p class="mt-5 eyebrow">Linked from the pages you scanned</p>
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            <button v-for="l in suggestions" :key="l.path"
+                    class="rounded-full border border-hairline px-3 py-1.5 text-[12.5px] hover:border-ink/30 disabled:opacity-40"
+                    :disabled="busy" @click="addSuggested(l)">
+              + {{ l.name }} <span class="font-mono opacity-55">{{ l.path }}</span>
+            </button>
+          </div>
+        </template>
 
         <div class="mt-5 flex items-end gap-2">
           <!-- Disabled while the request is in flight: the form clears when the

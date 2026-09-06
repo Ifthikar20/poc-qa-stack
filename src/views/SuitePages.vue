@@ -45,6 +45,22 @@ function toggle(p, kind, value) {
 }
 const has = (p, kind, value) => p.expect.some((e) => e.kind === kind && e.value === value);
 
+/** Links found by a scan, minus the pages already added. */
+const suggestions = computed(() => {
+  const have = new Set(suite.value?.pages.map((x) => x.path) ?? []);
+  const out = new Map();
+  for (const x of suite.value?.pages ?? []) {
+    for (const l of x.linked ?? []) if (!have.has(l.path) && !out.has(l.path)) out.set(l.path, l);
+  }
+  return [...out.values()].slice(0, 12);
+});
+
+async function addSuggested(l) {
+  busy.value = true; error.value = null;
+  try { await api.addPage(suite.value.id, { name: l.name, path: l.path }); await store.refresh(); }
+  catch (e) { error.value = e.message; } finally { busy.value = false; }
+}
+
 /**
  * Chips by NAME, not by target.
  *
@@ -114,6 +130,21 @@ function textOptions(p) {
 
     <section class="card p-5">
       <h2 class="text-[15px] font-medium">Add a page</h2>
+
+        <!-- What the app says its own pages are.
+             Reading them off the nav beats typing paths by hand, which is the
+             friction that ends with one page onboarded and the rest never done. -->
+        <template v-if="suggestions.length">
+          <p class="mt-5 eyebrow">Linked from the pages you scanned</p>
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            <button v-for="l in suggestions" :key="l.path"
+                    class="rounded-full border border-hairline px-3 py-1.5 text-[12.5px] hover:border-ink/30 disabled:opacity-40"
+                    :disabled="busy" @click="addSuggested(l)">
+              + {{ l.name }} <span class="font-mono opacity-55">{{ l.path }}</span>
+            </button>
+          </div>
+        </template>
+
       <div class="mt-3 flex items-end gap-2">
         <Field label="Name" class="flex-1">
           <input v-model="draft.name" placeholder="Settings" :disabled="busy" @keyup.enter="add">
