@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+/**
+ * The one stylesheet. The hand-written dashboard and console this replaced each
+ * carried their own copy of these tokens, which is exactly how two pages end up
+ * being two products.
+ *
+ * Radiant's palette: warm near-white ground, near-black ink, a pastel
+ * yellow→pink→violet wash for hero panels. The two chart marks are deliberately
+ * NOT green-and-red — those separate by only ΔE 4.1 under deuteranopia, so a
+ * stacked bar reads as one block to a red-green colourblind viewer. Failures
+ * carry the colour; passes stay neutral (ΔE 9.4, clear of the ≥8 target).
+ */
+@theme {
+  --font-display: ui-sans-serif, -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+
+  --color-ground:     #f7f7f6;
+  --color-panel:      #ffffff;
+  --color-ink:        #0f0f10;
+  --color-ink-2:      #55555a;
+  --color-ink-3:      #8b8b90;
+  --color-hairline:   #e9e8e5;
+
+  --color-night:      #0f1729;
+  --color-night-2:    #17203a;
+  --color-night-line: #26304d;
+
+  --color-glow-1:     #fef6c8;
+  --color-glow-2:     #f8c8dc;
+  --color-glow-3:     #c9a8f7;
+
+  --color-pass:       #8b8983;
+  --color-fail:       #d03b3b;
+  --color-good:       #0ca30c;
+  --color-critical:   #d03b3b;
+  --color-warn:       #a86b00;
+
+  --radius-card:      1rem;
+}
+
+@utility wash {
+  background-image:
+    radial-gradient(60% 120% at 88% -10%, var(--color-glow-2) 0%, transparent 62%),
+    radial-gradient(40% 90% at 100% 0%, var(--color-glow-3) 0%, transparent 58%);
+}
+@utility wash-warm {
+  background-image:
+    radial-gradient(70% 130% at 92% -20%, var(--color-glow-1) 0%, transparent 60%),
+    radial-gradient(50% 100% at 100% 10%, var(--color-glow-2) 0%, transparent 55%);
+}
+
+/* ------------------------------------------------------------------ base */
+html { color-scheme: light; }
+body {
+  margin: 0;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+
+/* Radiant's display type: large, tight, and never letter-spaced apart. */
+@utility display {
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  font-weight: 500;
+}
+
+/* One card, everywhere. A hairline instead of a shadow. */
+@utility card {
+  background: var(--color-panel);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-card);
+}
+
+@utility eyebrow {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+}
+
+/* The canvas the driven browser is streamed onto. */
+@utility stage {
+  background: #0b1220;
+  border-radius: 12px;
+  overflow: hidden;
+}
