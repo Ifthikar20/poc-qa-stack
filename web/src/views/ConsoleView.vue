@@ -72,6 +72,21 @@ function at(e) {
   };
 }
 const move = (e) => { const p = at(e); live.send({ t: 'human.move', ...p }); };
+
+/**
+ * The wheel, forwarded.
+ *
+ * preventDefault, or the console page scrolls instead of the page you are
+ * driving — which looks exactly like the feed being frozen. `passive: false` on
+ * the listener is what makes preventDefault legal here.
+ */
+function wheel(e) {
+  e.preventDefault();
+  const p = at(e);
+  live.send({ t: 'human.move', ...p });
+  live.send({ t: 'human.wheel', deltaY: e.deltaY, deltaX: e.deltaX });
+}
+const scrollTo = (where) => live.send({ t: 'human.wheel', deltaY: where === 'top' ? -100000 : 100000 });
 const click = (e) => { const p = at(e); live.send({ t: 'human.move', ...p }); live.send({ t: 'human.click' }); };
 function key(e) {
   if (e.key.length === 1) { e.preventDefault(); live.send({ t: 'human.key', text: e.key }); }
@@ -116,6 +131,14 @@ async function saveAsCase() {
   } catch (e) { error.value = e.message; }
 }
 
+/** One line per step. A scroll or a bare assertion has no target to show. */
+function describe(s) {
+  if (s.op === 'scroll') return `scroll to ${s.to ?? s.target}`;
+  if (s.op === 'expect') return `expect ${s.assert}${s.value ? ` ${s.value}` : ''}`;
+  if (s.op === 'wait') return `wait ${s.ms}ms`;
+  return `${s.op} ${s.target ?? s.url ?? ''}`.trim();
+}
+
 watch(() => live.recordedFlow, (f) => { if (f && !script.value) script.value = f; });
 </script>
 
@@ -136,8 +159,8 @@ watch(() => live.recordedFlow, (f) => { if (f && !script.value) script.value = f
       <div ref="wrap" class="stage relative" style="container-type: size; aspect-ratio: 1180 / 760">
         <canvas ref="canvas" :width="VIEW.w" :height="VIEW.h" tabindex="0"
                 class="block h-full w-full cursor-none"
-                aria-label="The page being driven — click and type here to demonstrate"
-                @mousemove="move" @click="click" @keydown="key" />
+                aria-label="The page being driven — click, type and scroll here to demonstrate"
+                @mousemove="move" @click="click" @keydown="key" @wheel.prevent="wheel" />
         <!-- The arrow is drawn here, not in the page. It is the same (x,y) the
              server dispatched, so what you see is where the click landed. -->
         <svg class="pointer-events-none absolute left-0 top-0 size-6 drop-shadow" :style="cursorStyle" viewBox="0 0 24 24">
@@ -151,6 +174,12 @@ watch(() => live.recordedFlow, (f) => { if (f && !script.value) script.value = f
                @keyup.enter="open">
         <button class="rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white" @click="open">Open</button>
         <button class="rounded-full border border-hairline px-4 py-2 text-[13px]" @click="live.send({ t: 'inspect' })">Re-scan</button>
+        <span class="flex overflow-hidden rounded-full border border-hairline">
+          <button class="px-3 py-2 text-[13px] hover:bg-ink/5" title="Scroll to the top of the page"
+                  @click="scrollTo('top')">↑ Top</button>
+          <button class="border-l border-hairline px-3 py-2 text-[13px] hover:bg-ink/5"
+                  title="Scroll to the bottom of the page" @click="scrollTo('bottom')">↓ Bottom</button>
+        </span>
         <button v-if="!live.recording" class="rounded-full border border-critical/40 px-4 py-2 text-[13px] text-critical"
                 :disabled="live.running" @click="record">● Record</button>
         <button v-else class="rounded-full bg-critical px-4 py-2 text-[13px] font-medium text-white" @click="stop">■ Stop</button>
@@ -222,7 +251,7 @@ watch(() => live.recordedFlow, (f) => { if (f && !script.value) script.value = f
               {{ { pass: '✓', fail: '✕', run: '·', idle: ' ' }[s.state] }}
             </span>
             <span class="min-w-0 flex-1" :class="s.state === 'fail' && 'text-critical'">
-              {{ s.step ? `${s.step.op} ${s.step.target ?? s.step.url ?? s.step.value ?? ''}` : '' }}
+              {{ s.step ? describe(s.step) : '' }}
               <span v-if="s.error" class="block text-ink-2">{{ s.error }}</span>
             </span>
             <span v-if="s.ms !== null" class="shrink-0 tabular-nums text-ink-3">{{ s.ms }}ms</span>
