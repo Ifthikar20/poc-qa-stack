@@ -43,6 +43,13 @@ const picked = ref('');
 const loaded = ref(null);      // which saved case is in the box, if any
 
 const suiteId = computed(() => route.query.suite ?? null);
+
+/** Same page, ignoring a trailing slash — which is not a different page. */
+const sameUrl = (a, b) => {
+  if (!a || !b) return false;
+  const norm = (u) => { try { return new URL(u).href.replace(/\/$/, ''); } catch { return String(u).replace(/\/$/, ''); } };
+  return norm(a) === norm(b);
+};
 const suite = computed(() => suites.list.find((s) => s.id === suiteId.value) ?? null);
 
 // ------------------------------------------------------------------ frames
@@ -68,7 +75,16 @@ onMounted(async () => {
   live.attachCanvas(paint);       // replays the frame the store already holds
   if (!suites.list.length) await suites.loadList();
   await loadCases();
-  if (route.query.url) { urlBox.value = route.query.url; open(); }
+  // Arriving with a URL means "show me this". Reloading a page the runner is
+  // already on would throw away whatever is on it — a recording in progress,
+  // a form half filled — for no gain, so only navigate when it is somewhere
+  // else. The box still shows where you are either way.
+  if (route.query.url) {
+    urlBox.value = route.query.url;
+    if (!sameUrl(live.url, route.query.url)) open();
+  } else if (live.url) {
+    urlBox.value = live.url;
+  }
 });
 onBeforeUnmount(() => live.detachCanvas());
 
@@ -157,6 +173,15 @@ async function open() {
   live.send({ t: 'open', url: opening.value });
 }
 watch(() => live.painted, (p) => { if (p) opening.value = null; });
+
+// The console stays mounted when you move between suites, so a new ?url= has
+// to be acted on — otherwise the second suite's Console button appears to do
+// nothing at all.
+watch(() => route.query.url, (u) => {
+  if (!u || sameUrl(live.url, u)) return;
+  urlBox.value = u;
+  open();
+});
 async function allow() {
   allowing.value = true;
   try {
