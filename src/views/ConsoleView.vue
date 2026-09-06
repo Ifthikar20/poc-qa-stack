@@ -132,10 +132,12 @@ async function open() {
 watch(() => live.painted, (p) => { if (p) opening.value = null; });
 async function allow() {
   try {
-    await api.allowOrigin(live.needsOrigin.origin);
-    const u = live.needsOrigin.url;
+    const { origin, url, redirected } = live.needsOrigin;
+    await api.allowOrigin(origin);
     live.needsOrigin = null;
-    urlBox.value = u; open();
+    // A redirect prompt is about a page we are ALREADY on — reopening it would
+    // throw away whatever you were doing there, recording included.
+    if (url && !redirected) { urlBox.value = url; open(); }
   } catch (e) { error.value = e.message; }
 }
 const run = () => live.send({ t: 'command', text: script.value });
@@ -270,9 +272,16 @@ watch(() => live.recordedFlow, (f) => {
 
       <div v-if="live.needsOrigin" class="mt-3 card wash-warm p-4">
         <p class="text-[13.5px] font-medium">{{ live.needsOrigin.origin }} is not allowed yet.</p>
-        <p class="mt-1 text-[13px] text-ink-2">The gate only opens for a person. Nothing generated can reach this button.</p>
+        <p v-if="live.needsOrigin.redirected" class="mt-1 max-w-2xl text-[13px] leading-relaxed text-ink-2">
+          The page you opened redirected here. A different host or scheme is a different
+          origin — allowing <code>example.com</code> does not allow <code>www.example.com</code> —
+          so anything you record on this page will refuse to replay until you allow it too.
+        </p>
+        <p v-else class="mt-1 text-[13px] text-ink-2">The gate only opens for a person. Nothing generated can reach this button.</p>
         <div class="mt-3 flex gap-2">
-          <button class="rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white" @click="allow">Allow it and open</button>
+          <button class="rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white" @click="allow">
+            {{ live.needsOrigin.url && !live.needsOrigin.redirected ? 'Allow it and open' : 'Allow it' }}
+          </button>
           <button class="rounded-full border border-hairline px-4 py-2 text-[13px]" @click="live.needsOrigin = null">Cancel</button>
         </div>
       </div>
