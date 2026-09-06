@@ -27,6 +27,8 @@ defineProps({ label: String, hint: String, error: String });
   opacity: 0.55; cursor: not-allowed;
 }
 :slotted(input:focus), :slotted(textarea:focus), :slotted(select:focus) {
-  outline: none; border-color: color-mix(in oklab, var(--color-ink) 30%, transparent);
+  outline: none;
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-brand) 14%, transparent);
 }
 </style>

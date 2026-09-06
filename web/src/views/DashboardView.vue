@@ -42,7 +42,7 @@ const match = (rows) => rows.filter((r) => (r.suite ?? '').toLowerCase().include
 
     <EmptyState v-if="!data || !data.totals.runs" title="No runs yet"
                 body="Onboard a suite and run it; the outcomes land here." >
-      <RouterLink to="/suites/new" class="rounded-full bg-ink px-4 py-2 text-[13.5px] font-medium text-white">
+      <RouterLink to="/suites/new" class="rounded-full bg-brand hover:bg-brand-2 px-4 py-2 text-[13.5px] font-medium text-white">
         Onboard a project
       </RouterLink>
     </EmptyState>
@@ -96,7 +96,7 @@ const match = (rows) => rows.filter((r) => (r.suite ?? '').toLowerCase().include
         </div>
         <table class="mt-3 w-full text-[13.5px]">
           <thead class="border-y border-hairline text-left">
-            <tr class="eyebrow">
+            <tr class="table-head">
               <th class="px-5 py-2.5 font-semibold">Suite</th>
               <th class="px-3 py-2.5 font-semibold">Last run</th>
               <th class="px-3 py-2.5 font-semibold">Pass rate</th>
@@ -123,7 +123,7 @@ const match = (rows) => rows.filter((r) => (r.suite ?? '').toLowerCase().include
         </div>
         <table class="mt-3 w-full text-[13.5px]">
           <thead class="border-y border-hairline text-left">
-            <tr class="eyebrow">
+            <tr class="table-head">
               <th class="px-5 py-2.5 font-semibold">Suite</th>
               <th class="px-3 py-2.5 font-semibold">Steps</th>
               <th class="px-3 py-2.5 font-semibold">Took</th>

@@ -93,7 +93,7 @@ const pageName = (id) => suite.value.pages.find((p) => p.id === id)?.name ?? nul
                 @click="fromRecorder">
           Use the recording ({{ live.recordedCount }} steps)
         </button>
-        <button class="rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white"
+        <button class="rounded-full bg-brand hover:bg-brand-2 px-4 py-2 text-[13px] font-medium text-white"
                 @click="adding = !adding">{{ adding ? 'Cancel' : 'New case' }}</button>
       </div>
     </div>
@@ -115,14 +115,14 @@ const pageName = (id) => suite.value.pages.find((p) => p.id === id)?.name ?? nul
           <FlowBox v-model="draft.flow" :rows="10" />
         </Field>
       </div>
-      <button class="mt-4 rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white disabled:opacity-40"
+      <button class="mt-4 rounded-full bg-brand hover:bg-brand-2 px-4 py-2 text-[13px] font-medium text-white disabled:bg-ink/[0.05] disabled:text-ink-3"
               :disabled="!draft.name || !draft.flow" @click="add">Save case</button>
     </section>
 
     <EmptyState v-if="!suite.cases.length && !adding" title="No cases yet"
                 body="Open the console, press Record, and drive the page by hand — the recorder names every element from the accessibility tree and hands you back a script." >
       <RouterLink :to="{ path: '/console', query: { suite: suite.id, url: suite.pages[0]?.url } }"
-                  class="rounded-full bg-ink px-4 py-2 text-[13.5px] font-medium text-white">Open the console</RouterLink>
+                  class="rounded-full bg-brand hover:bg-brand-2 px-4 py-2 text-[13.5px] font-medium text-white">Open the console</RouterLink>
     </EmptyState>
 
     <section v-for="c in suite.cases" :key="c.id" class="card mb-3 p-5">
@@ -149,7 +149,7 @@ const pageName = (id) => suite.value.pages.find((p) => p.id === id)?.name ?? nul
         <div class="mt-3">
           <Field label="Flow"><FlowBox v-model="edit.flow" :rows="12" /></Field>
         </div>
-        <button class="mt-4 rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white" @click="save(c)">
+        <button class="mt-4 rounded-full bg-brand hover:bg-brand-2 px-4 py-2 text-[13px] font-medium text-white" @click="save(c)">
           Save
         </button>
       </div>

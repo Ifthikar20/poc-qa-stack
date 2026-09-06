@@ -5,29 +5,46 @@
  * carried their own copy of these tokens, which is exactly how two pages end up
  * being two products.
  *
- * Radiant's palette: warm near-white ground, near-black ink, a pastel
- * yellow→pink→violet wash for hero panels. The two chart marks are deliberately
- * NOT green-and-red — those separate by only ΔE 4.1 under deuteranopia, so a
- * stacked bar reads as one block to a red-green colourblind viewer. Failures
- * carry the colour; passes stay neutral (ΔE 9.4, clear of the ≥8 target).
+ * Cool near-white ground, near-black ink, one magenta accent. The accent is
+ * used the way a product accent should be — the mark, the active item, the one
+ * button you are meant to press — and nowhere else, so it still means something
+ * when it appears.
+ *
+ * Two magentas, because one cannot do both jobs: `brand` is the fill (white on
+ * it clears 4.5:1), `brand-2` is the same hue dark enough to be 13px text on
+ * white (6.0:1). Reaching for the bright one as text is the usual way an accent
+ * ends up illegible.
+ *
+ * The two chart marks are deliberately NOT green-and-red — those separate by
+ * only ΔE 4.1 under deuteranopia, so a stacked bar reads as one block to a
+ * red-green colourblind viewer. Failures carry the colour; passes stay neutral
+ * (ΔE 9.4, clear of the ≥8 target). That pair is unchanged here.
  */
 @theme {
   --font-display: ui-sans-serif, -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
 
-  --color-ground:     #f7f7f6;
+  --color-ground:     #fbfbfc;
   --color-panel:      #ffffff;
-  --color-ink:        #0f0f10;
-  --color-ink-2:      #55555a;
-  --color-ink-3:      #8b8b90;
-  --color-hairline:   #e9e8e5;
+  --color-ink:        #101014;
+  --color-ink-2:      #5a5a66;
+  --color-ink-3:      #6f6f7c;
+  --color-hairline:   #eaeaef;
 
+  /* The accent. brand fills, brand-2 is the text-safe shade, brand-50 the tint
+     behind whatever is currently selected. */
+  --color-brand:      #e6007c;
+  --color-brand-2:    #c2006a;
+  --color-brand-50:   #fdeef6;
+
+  /* Kept for the one place a dark surface is correct: the stage the driven
+     browser is streamed onto, which should not glow at you. */
   --color-night:      #0f1729;
   --color-night-2:    #17203a;
   --color-night-line: #26304d;
 
-  --color-glow-1:     #fef6c8;
-  --color-glow-2:     #f8c8dc;
-  --color-glow-3:     #c9a8f7;
+  --color-glow-1:     #ffe8d6;
+  --color-glow-2:     #fcd9ea;
+  --color-glow-3:     #ded2fb;
 
   --color-pass:       #8b8983;
   --color-fail:       #d03b3b;
@@ -35,7 +52,7 @@
   --color-critical:   #d03b3b;
   --color-warn:       #a86b00;
 
-  --radius-card:      1rem;
+  --radius-card:      0.875rem;
 }
 
 @utility wash {
@@ -58,7 +75,7 @@ body {
   font-family: var(--font-display);
   -webkit-font-smoothing: antialiased;
 }
-:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
 
 /**
  * Every button acknowledges the press.
@@ -82,11 +99,57 @@ button:disabled { cursor: not-allowed; }
   font-weight: 500;
 }
 
-/* One card, everywhere. A hairline instead of a shadow. */
+/* One card, everywhere. A hairline and the faintest lift, never a drop shadow. */
 @utility card {
   background: var(--color-panel);
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-card);
+  box-shadow: 0 1px 2px rgb(16 16 20 / 0.03);
+}
+
+/**
+ * One row of the sidebar, and the filter pills above a report.
+ *
+ * Selected state is a tinted pill rather than a heavy fill: at this size a
+ * solid block of accent is louder than the thing it is pointing at.
+ */
+@utility nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 13px;
+  color: var(--color-ink-2);
+}
+@utility nav-item-on {
+  background: var(--color-brand-50);
+  color: var(--color-brand-2);
+  font-weight: 500;
+}
+
+/**
+ * A table's header row. A tinted band and sentence case, not shouted caps —
+ * `eyebrow` is for section labels standing alone, where the caps are what make
+ * it read as a label at all. Above a column it is just harder to read.
+ */
+@utility table-head {
+  background: var(--color-ground);
+  font-size: 12px;
+  color: var(--color-ink-3);
+}
+
+/* A filter or a segmented control: white, hairline, quietly interactive. */
+@utility chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--color-hairline);
+  border-radius: 0.625rem;
+  background: var(--color-panel);
+  padding: 0.4rem 0.7rem;
+  font-size: 13px;
+  color: var(--color-ink-2);
 }
 
 @utility eyebrow {

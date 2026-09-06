@@ -68,7 +68,7 @@ const dur = (ms) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
       <section class="card overflow-hidden">
         <table class="w-full text-[13.5px]">
           <thead class="border-b border-hairline text-left">
-            <tr class="eyebrow">
+            <tr class="table-head">
               <th class="px-5 py-3 font-semibold">Case</th>
               <th class="px-3 py-3 font-semibold">Steps</th>
               <th class="px-3 py-3 font-semibold">Took</th>
