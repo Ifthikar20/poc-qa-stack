@@ -2,7 +2,7 @@
 /**
  * Cases: the flows this suite runs.
  *
- * A case is stored as flow text — the mermaid subset that is also the script —
+ * A case is stored as case text — the language that is also the script —
  * so what you read here is exactly what runs. Editing one re-validates against
  * the same parser the executor uses, which is why an unrunnable edit is refused
  * at save rather than discovered at 2am.
@@ -111,7 +111,7 @@ const pageName = (id) => suite.value.pages.find((p) => p.id === id)?.name ?? nul
         </Field>
       </div>
       <div class="mt-3">
-        <Field label="Flow" hint="The mermaid subset. One edge is one interaction.">
+        <Field label="Test case" hint="One edge is one interaction. Several can go under it, one per line.">
           <FlowBox v-model="draft.flow" :rows="10" />
         </Field>
       </div>
