@@ -67,6 +67,8 @@ export const useLive = defineStore('live', {
       };
       ws.onclose = () => {
         this.connected = false;
+        // We no longer know what the executor is doing; `ready` will say.
+        this.running = false;
         // The server restarts often while you are working on it. Reconnecting
         // quietly beats a page that looks broken until you reload it.
         setTimeout(() => this.connect(), 1200);
@@ -109,6 +111,11 @@ export const useLive = defineStore('live', {
       switch (ev.t) {
         case 'ready':
           this.url = ev.url; this.origins = ev.origins; this.secrets = ev.secrets;
+          // Trust the server over whatever we last saw. A socket that dropped
+          // mid-run never received run.end, so `running` stayed true here and
+          // the Run button was disabled until someone reloaded the page.
+          this.running = !!ev.running;
+          this.recording = !!ev.recording;
           break;
         case 'origins': this.origins = ev.origins; break;
         case 'secrets': this.secrets = ev.secrets; break;
