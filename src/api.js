@@ -28,6 +28,7 @@ async function req(path, { method = 'GET', body } = {}) {
 
 export const api = {
   state:   () => req('/api/state'),
+  version: () => req('/api/version'),
   runs:    (suite) => req(`/api/runs${suite ? `?suite=${encodeURIComponent(suite)}` : ''}`),
 
   origins:      () => req('/api/origins'),
