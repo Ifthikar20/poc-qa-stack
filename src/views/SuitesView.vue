@@ -18,6 +18,7 @@ import { api } from '@/api';
 import { useSuites } from '@/stores/suites';
 import TopBar from '@/components/TopBar.vue';
 import EmptyState from '@/components/EmptyState.vue';
+import Btn from '@/components/Btn.vue';
 
 const router = useRouter();
 const store = useSuites();
@@ -74,10 +75,9 @@ async function allowAndRetry() {
                :disabled="busy"
                class="min-w-0 flex-1 rounded-full border border-hairline bg-panel px-4 py-2.5 text-[14px] outline-none focus:border-ink/25 disabled:opacity-55"
                @keyup.enter="quickstart">
-        <button class="rounded-full bg-ink px-5 py-2.5 text-[13.5px] font-medium text-white disabled:opacity-40"
-                :disabled="busy || !url.trim()" @click="quickstart">
-          {{ busy ? 'Opening…' : 'Add and test' }}
-        </button>
+        <Btn :busy="busy" busy-label="Opening and testing…" :disabled="!url.trim()" @click="quickstart">
+          Add and test
+        </Btn>
       </div>
 
       <div v-if="needsOrigin" class="mt-4 max-w-2xl rounded-xl border border-hairline bg-panel px-4 py-3">
@@ -86,8 +86,7 @@ async function allowAndRetry() {
           The runner will not open an origin nobody approved, and no script can approve one. This is
           that approval.
         </p>
-        <button class="mt-3 rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white disabled:opacity-40"
-                :disabled="busy" @click="allowAndRetry">Allow it and continue</button>
+        <Btn class="mt-3" :busy="busy" busy-label="Allowing…" @click="allowAndRetry">Allow it and continue</Btn>
       </div>
 
       <p v-if="error" class="mt-4 max-w-2xl rounded-xl border border-critical/25 bg-critical/5 px-4 py-3 text-[13px] text-critical">

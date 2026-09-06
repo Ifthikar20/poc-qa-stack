@@ -60,6 +60,21 @@ body {
 }
 :focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
 
+/**
+ * Every button acknowledges the press.
+ *
+ * A control that looks identical the instant you click it reads as broken, and
+ * on a tool where half the actions take seconds that guess is the difference
+ * between waiting and clicking again.
+ */
+button:not(:disabled), select:not(:disabled), [role="button"]:not([aria-disabled="true"]) {
+  transition: transform 70ms ease, background-color 120ms ease, border-color 120ms ease;
+}
+button:not(:disabled):active, [role="button"]:not([aria-disabled="true"]):active {
+  transform: scale(0.97);
+}
+button:disabled { cursor: not-allowed; }
+
 /* Radiant's display type: large, tight, and never letter-spaced apart. */
 @utility display {
   letter-spacing: -0.035em;

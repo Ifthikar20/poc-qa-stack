@@ -9,6 +9,7 @@ import { api } from '@/api';
 import { useSuites } from '@/stores/suites';
 import Field from '@/components/Field.vue';
 import EmptyState from '@/components/EmptyState.vue';
+import Btn from '@/components/Btn.vue';
 
 const store = useSuites();
 const suite = computed(() => store.current);
@@ -100,10 +101,9 @@ function textOptions(p) {
         <span class="ml-auto text-[12px] text-ink-3">
           {{ p.scannedAt ? `${p.targets.length} targets` : 'not scanned' }}
         </span>
-        <button class="rounded-full border border-hairline px-3 py-1.5 text-[12.5px] disabled:opacity-40"
-                :disabled="scanning === p.id" @click="scan(p)">
-          {{ scanning === p.id ? 'Scanning…' : p.scannedAt ? 'Re-scan' : 'Scan' }}
-        </button>
+        <Btn variant="ghost" size="sm" :busy="scanning === p.id" busy-label="Scanning…" @click="scan(p)">
+          {{ p.scannedAt ? 'Re-scan' : 'Scan' }}
+        </Btn>
         <button class="rounded-full px-2 py-1.5 text-[12.5px] text-ink-3 hover:text-critical" @click="remove(p)">✕</button>
       </div>
 
@@ -122,10 +122,7 @@ function textOptions(p) {
         Scan the page to see what it offers.
       </p>
 
-      <button class="mt-4 rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white disabled:opacity-40"
-              :disabled="saving === p.id" @click="save(p)">
-        {{ saving === p.id ? 'Saving…' : 'Save expectations' }}
-      </button>
+      <Btn class="mt-4" :busy="saving === p.id" busy-label="Saving…" @click="save(p)">Save expectations</Btn>
     </section>
 
     <section class="card p-5">
