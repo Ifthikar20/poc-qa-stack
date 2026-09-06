@@ -35,6 +35,9 @@ const caseName = ref('Recorded flow');
 const saved = ref(null);
 const error = ref(null);
 const opening = ref(null);
+const cases = ref([]);
+const picked = ref('');
+const loaded = ref(null);      // which saved case is in the box, if any
 
 const suiteId = computed(() => route.query.suite ?? null);
 const suite = computed(() => suites.list.find((s) => s.id === suiteId.value) ?? null);
@@ -61,6 +64,7 @@ onMounted(async () => {
   live.connect();
   live.attachCanvas(paint);       // replays the frame the store already holds
   if (!suites.list.length) await suites.loadList();
+  await loadCases();
   if (route.query.url) { urlBox.value = route.query.url; open(); }
 });
 onBeforeUnmount(() => live.detachCanvas());
@@ -137,7 +141,31 @@ async function allow() {
 const run = () => live.send({ t: 'command', text: script.value });
 const record = () => live.send({ t: 'record.start' });
 const stop = () => live.send({ t: 'record.stop' });
-const useRecording = () => { script.value = live.recordedFlow; };
+const useRecording = () => { script.value = live.recordedFlow; autofilled = live.recordedFlow; loaded.value = null; };
+
+async function loadCases() {
+  try { cases.value = (await api.cases()).cases; } catch { cases.value = []; }
+}
+
+/** Cases grouped by their suite, for the picker's optgroups. */
+const grouped = computed(() => {
+  const by = new Map();
+  for (const c of cases.value) {
+    if (!by.has(c.suite)) by.set(c.suite, []);
+    by.get(c.suite).push(c);
+  }
+  return [...by.entries()];
+});
+
+/** Loading a case puts its flow in the box, where you can read it before running. */
+function pick(id) {
+  picked.value = id;
+  const c = cases.value.find((x) => x.id === id);
+  if (!c) { loaded.value = null; return; }
+  script.value = c.flow;
+  autofilled = c.flow;          // still ours until you type in it
+  loaded.value = c;
+}
 
 /** The hand-off that makes teach mode worth having: recording -> stored case. */
 async function saveAsCase() {
@@ -148,6 +176,9 @@ async function saveAsCase() {
     });
     saved.value = c.name;
     await suites.loadList();
+    await loadCases();          // it should be selectable straight away
+    picked.value = c.id;
+    loaded.value = { ...c, suite: suite.value?.name ?? suiteId.value };
   } catch (e) { error.value = e.message; }
 }
 
@@ -159,7 +190,24 @@ function describe(s) {
   return `${s.op} ${s.target ?? s.url ?? ''}`.trim();
 }
 
-watch(() => live.recordedFlow, (f) => { if (f && !script.value) script.value = f; });
+/**
+ * Keep the script box in step with the recording — until you edit it.
+ *
+ * This used to fill the box only while it was empty, which sounds right and is
+ * exactly wrong: pressing Record immediately produces a one-step flow (the
+ * goto), the box takes that, and every step you demonstrate afterwards is
+ * ignored because the box is no longer empty. You would finish a four-step
+ * recording and find one line in front of you.
+ */
+let autofilled = '';
+watch(() => live.recordedFlow, (f) => {
+  if (!f) return;
+  if (script.value === '' || script.value === autofilled) {
+    script.value = f;
+    autofilled = f;
+    loaded.value = null;
+  }
+});
 </script>
 
 <template>
@@ -231,12 +279,34 @@ watch(() => live.recordedFlow, (f) => { if (f && !script.value) script.value = f
 
       <!-- script ---------------------------------------------------- -->
       <section class="card mt-4 p-5">
-        <div class="flex items-baseline gap-3">
+        <div class="flex flex-wrap items-baseline gap-3">
           <h2 class="text-[15px] font-medium">Script</h2>
           <span class="text-[13px] text-ink-3">Flow language, or one instruction per line.</span>
-          <button class="ml-auto rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white disabled:opacity-40"
+
+          <!-- A saved case is the usual thing you want to run here, so it is one
+               control away rather than a trip through the sidebar. -->
+          <!-- Read the value off the event, not off v-model: both handlers fire on
+               the same change and v-model does not reliably win the race, so
+               `picked` can still hold the previous selection when this runs. -->
+          <select v-if="cases.length" :value="picked" @change="pick($event.target.value)"
+                  class="ml-auto max-w-64 rounded-full border border-hairline bg-panel px-3.5 py-1.5 text-[13px] outline-none focus:border-ink/25">
+            <option value="">Load a saved case…</option>
+            <optgroup v-for="[suiteName, rows] in grouped" :key="suiteName" :label="suiteName">
+              <option v-for="c in rows" :key="c.id" :value="c.id">
+                {{ c.name }} · {{ c.steps }} step{{ c.steps === 1 ? '' : 's' }}
+              </option>
+            </optgroup>
+          </select>
+
+          <button class="rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white disabled:opacity-40"
+                  :class="!cases.length && 'ml-auto'"
                   :disabled="live.running || !script.trim()" @click="run">Run script</button>
         </div>
+        <p v-if="loaded" class="mt-2 flex items-center gap-2 text-[12.5px] text-ink-3">
+          Loaded <b class="font-medium text-ink">{{ loaded.name }}</b>
+          <template v-if="loaded.suite">from {{ loaded.suite }}</template>
+          <button class="underline hover:text-ink" @click="script = ''; loaded = null; picked = ''">clear</button>
+        </p>
         <FlowBox v-model="script" :rows="10" class="mt-3" />
       </section>
     </div>
