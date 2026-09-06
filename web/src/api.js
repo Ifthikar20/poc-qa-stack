@@ -35,6 +35,7 @@ export const api = {
   removeOrigin: (origin) => req('/api/origins', { method: 'DELETE', body: { origin } }),
 
   suites:      () => req('/api/suites'),
+  quickstart:  (url) => req('/api/suites/quickstart', { method: 'POST', body: { url } }),
   suite:       (id) => req(`/api/suites/${id}`),
   createSuite: (body) => req('/api/suites', { method: 'POST', body }),
   updateSuite: (id, body) => req(`/api/suites/${id}`, { method: 'PATCH', body }),
