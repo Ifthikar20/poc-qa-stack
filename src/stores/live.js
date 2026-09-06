@@ -40,6 +40,7 @@ export const useLive = defineStore('live', {
     cursor: { x: 0, y: 0 },
     ripple: 0,
     needsOrigin: null,
+    navs: [],           // recent navigations, newest first
     diagram: null,
     ws: null,
     onFrame: null,      // set by the console view while it is mounted
@@ -123,7 +124,13 @@ export const useLive = defineStore('live', {
         case 'cursor': this.cursor = { x: ev.x, y: ev.y }; break;
         case 'press': this.ripple++; break;
         case 'diagram': this.diagram = ev.mermaid; break;
-        case 'needs.origin': this.needsOrigin = { origin: ev.origin, url: ev.url }; break;
+        case 'needs.origin':
+          this.needsOrigin = { origin: ev.origin, url: ev.url, redirected: ev.redirected };
+          break;
+        case 'nav':
+          this.navs.unshift({ id: `${Date.now()}-${Math.random()}`, ...ev });
+          if (this.navs.length > 25) this.navs.length = 25;
+          break;
 
         case 'record.state': this.recording = ev.on; break;
         case 'recorded':
