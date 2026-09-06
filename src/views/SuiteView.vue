@@ -3,8 +3,8 @@
  * The shell every suite section renders inside: load once here, then Overview,
  * Pages, Cases and Runs read the same store rather than each fetching.
  */
-import { computed, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, nextTick, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { api } from '@/api';
 import { useSuites } from '@/stores/suites';
 import TopBar from '@/components/TopBar.vue';
@@ -12,6 +12,7 @@ import Btn from '@/components/Btn.vue';
 import { useLive } from '@/stores/live';
 
 const route = useRoute();
+const router = useRouter();
 const store = useSuites();
 const live = useLive();
 
@@ -37,15 +38,38 @@ const crumbs = computed(() => [
  */
 const running = ref(false);
 
+/**
+ * Run the suite where you can watch it.
+ *
+ * A run drives a real browser for tens of seconds, and pressing the button used
+ * to leave you on a summary page while all of that happened somewhere you could
+ * not see. So it goes to the console first — the canvas, the step list, the log
+ * — and starts the run there.
+ *
+ * No `url` in the query: the run's own first step navigates, and pointing the
+ * console at a page at the same moment would have the two fighting over the
+ * browser.
+ */
 async function runAll() {
   if (running.value) return;
   running.value = true;
   store.error = null;
+  const id = suite.value.id;
+
+  // Navigate FIRST, so the console is mounted and listening before the first
+  // step reports. Arriving halfway through a run means an empty step list.
+  await router.push({ path: '/console', query: { suite: id } });
+  await nextTick();
+
   try {
-    const r = await api.runSuite(suite.value.id);
-    if (r.passed < r.total) store.error = `${r.total - r.passed} of ${r.total} cases failed — see Runs.`;
+    const r = await api.runSuite(id);
+    if (r.passed < r.total) {
+      live.say(`${r.total - r.passed} of ${r.total} cases failed`, 'error');
+    }
   } catch (e) {
-    store.error = e.needsOrigin ? `${e.needsOrigin} is not allowed yet — allow it on the Overview.` : e.message;
+    // The gate is a decision, not an error: hand the console the button.
+    if (e.needsOrigin) live.needsOrigin = { origin: e.needsOrigin };
+    else live.say(e.message, 'error');
   } finally {
     running.value = false;
     await store.refresh();
