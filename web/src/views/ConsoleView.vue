@@ -419,6 +419,36 @@ watch(() => live.recordedFlow, (f) => {
         </div>
       </section>
 
+      <!-- Where each navigation actually went. The final URL says nothing about
+           a 301 through a dead path, a detour via a tracker, or a friendly 404
+           — and none of those is visible anywhere else. -->
+      <section v-if="live.navs.length" class="card p-5">
+        <div class="flex items-baseline gap-2">
+          <h2 class="text-[15px] font-medium">Where it went</h2>
+          <span class="ml-auto text-[12.5px] text-ink-3">{{ live.navs.length }}</span>
+        </div>
+        <ul class="mt-3 max-h-72 space-y-2.5 overflow-y-auto">
+          <li v-for="n in live.navs" :key="n.id" class="border-b border-hairline pb-2.5 last:border-0 last:pb-0">
+            <p class="flex items-center gap-2 text-[12.5px]">
+              <span class="rounded px-1.5 py-0.5 font-mono text-[11px] font-medium"
+                    :class="n.status >= 400 ? 'bg-critical/10 text-critical'
+                          : n.redirects ? 'bg-warn/10 text-warn' : 'bg-ink/5 text-ink-2'">{{ n.status }}</span>
+              <span v-if="n.redirects" class="text-ink-2">
+                {{ n.redirects }} redirect{{ n.redirects === 1 ? '' : 's' }}
+              </span>
+              <span v-if="n.leftOrigin" class="text-critical">left the origin</span>
+            </p>
+            <p class="mt-1 truncate font-mono text-[11px] text-ink-3" :title="n.url">{{ n.url }}</p>
+            <ol v-if="n.redirects" class="mt-1.5 space-y-0.5">
+              <li v-for="(h, i) in n.hops" :key="i" class="flex gap-2 font-mono text-[10.5px] text-ink-3">
+                <span class="w-7 shrink-0 text-right">{{ h.status }}</span>
+                <span class="truncate" :title="h.url">{{ h.url }}</span>
+              </li>
+            </ol>
+          </li>
+        </ul>
+      </section>
+
       <section class="card p-5">
         <h2 class="text-[15px] font-medium">Log</h2>
         <ul class="mt-3 max-h-64 space-y-1 overflow-y-auto font-mono text-[11.5px]">
