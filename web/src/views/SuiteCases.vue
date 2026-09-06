@@ -7,16 +7,17 @@
  * the same parser the executor uses, which is why an unrunnable edit is refused
  * at save rather than discovered at 2am.
  */
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { api } from '@/api';
+import { useRouter } from 'vue-router';
 import { useSuites } from '@/stores/suites';
 import { useLive } from '@/stores/live';
 import Field from '@/components/Field.vue';
 import FlowBox from '@/components/FlowBox.vue';
-import StatusPill from '@/components/StatusPill.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Btn from '@/components/Btn.vue';
 
+const router = useRouter();
 const store = useSuites();
 const live = useLive();
 const suite = computed(() => store.current);
@@ -27,7 +28,6 @@ const draft = ref({ name: '', pageId: '', flow: '' });
 const adding = ref(false);
 const error = ref(null);
 const running = ref(null);
-const results = ref({});         // caseId -> ok, from the last run in this session
 
 function startEdit(c) {
   open.value = open.value === c.id ? null : c.id;
@@ -53,13 +53,22 @@ async function add() {
     await store.refresh();
   } catch (e) { error.value = e.message; }
 }
+/**
+ * One case, watched. Same reasoning as Run suite: a run you cannot see is a
+ * progress bar with the bar taken out.
+ */
 async function runOne(c) {
   running.value = c.id; error.value = null;
+  const id = suite.value.id;
+  await router.push({ path: '/console', query: { suite: id } });
+  await nextTick();
   try {
-    const r = await api.runSuite(suite.value.id, c.id);
-    results.value[c.id] = r.outcomes[0]?.ok ?? null;
-  } catch (e) { error.value = e.needsOrigin ? `${e.needsOrigin} is not allowed yet.` : e.message; }
-  finally { running.value = null; }
+    const r = await api.runSuite(id, c.id);
+    if (!r.outcomes[0]?.ok) live.say(`${c.name}: ${r.outcomes[0]?.error ?? 'failed'}`, 'error');
+  } catch (e) {
+    if (e.needsOrigin) live.needsOrigin = { origin: e.needsOrigin };
+    else live.say(e.message, 'error');
+  } finally { running.value = null; }
 }
 
 /** Whatever the recorder has produced, dropped straight into a new case. */
@@ -125,7 +134,6 @@ const pageName = (id) => suite.value.pages.find((p) => p.id === id)?.name ?? nul
             <template v-if="pageName(c.pageId)"> · {{ pageName(c.pageId) }}</template>
           </p>
         </div>
-        <StatusPill v-if="results[c.id] !== undefined" :ok="results[c.id]" size="sm" class="ml-2" />
         <div class="ml-auto flex shrink-0 gap-2">
           <Btn variant="ghost" size="sm" :busy="running === c.id" busy-label="Running…"
                :disabled="live.running" @click="runOne(c)">Run</Btn>

@@ -1,16 +1,30 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { api } from '@/api';
 import { useSuites } from '@/stores/suites';
+import { useLive } from '@/stores/live';
 import StatTile from '@/components/StatTile.vue';
 import StatusPill from '@/components/StatusPill.vue';
 import EmptyState from '@/components/EmptyState.vue';
 
 const store = useSuites();
+const live = useLive();
 const suite = computed(() => store.current);
 const runs = ref(null);
 
-onMounted(async () => { runs.value = await api.runs(suite.value.id); });
+/**
+ * Reload when the SUITE changes, not just when this component mounts.
+ *
+ * Vue reuses a route component when only the parameter changes, so moving from
+ * one suite to another never re-ran onMounted — and the new suite's page showed
+ * the previous suite's runs under the new suite's name. Four passing runs on a
+ * suite that had never been run.
+ *
+ * Also reload when a run finishes, so the numbers settle without a refresh.
+ */
+const load = async (id) => { runs.value = id ? await api.runs(id).catch(() => null) : null; };
+watch(() => suite.value?.id, load, { immediate: true });
+watch(() => live.running, (now, before) => { if (before && !now) load(suite.value?.id); });
 
 const rate = computed(() => {
   const p = runs.value?.totals.passRate;
