@@ -55,7 +55,7 @@ async function allow() {
       <p class="mt-1.5 max-w-xl text-[13px] leading-relaxed text-ink-2">
         Nothing in this suite can run until a person approves its origin. No script can do it.
       </p>
-      <button class="mt-4 rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white" @click="allow">
+      <button class="mt-4 rounded-full bg-brand hover:bg-brand-2 px-4 py-2 text-[13px] font-medium text-white" @click="allow">
         Allow {{ store.origin }}
       </button>
     </div>

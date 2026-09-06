@@ -5,7 +5,7 @@ const live = useLive();
 </script>
 
 <template>
-  <header class="sticky top-0 z-10 flex items-center gap-3 border-b border-hairline bg-ground/85 px-6 py-3 backdrop-blur">
+  <header class="sticky top-0 z-10 flex items-center gap-3 border-b border-hairline bg-ground/80 px-6 py-3.5 backdrop-blur">
     <nav class="flex min-w-0 items-center gap-1.5 text-[13px] text-ink-3">
       <template v-for="(c, i) in crumbs" :key="i">
         <span v-if="i" aria-hidden="true">/</span>
@@ -16,8 +16,9 @@ const live = useLive();
 
     <div class="ml-auto flex items-center gap-2">
       <span v-if="live.running"
-            class="flex items-center gap-2 rounded-full border border-hairline px-3 py-1.5 text-[12.5px] text-ink-2">
-        <span class="size-1.5 animate-pulse rounded-full bg-glow-3" /> Running
+            class="flex items-center gap-2 rounded-full border border-brand/20 bg-brand-50 px-3 py-1.5
+                   text-[12.5px] font-medium text-brand-2">
+        <span class="size-1.5 animate-pulse rounded-full bg-brand" /> Running
       </span>
       <slot name="actions" />
     </div>

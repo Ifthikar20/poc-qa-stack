@@ -194,7 +194,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
                 : step > s.n ? 'border-hairline bg-panel/60' : 'border-hairline bg-transparent'">
         <p class="flex items-center gap-2 text-[12.5px] font-medium">
           <span class="grid size-4.5 place-items-center rounded-full text-[10.5px]"
-                :class="step > s.n ? 'bg-ink text-white' : step === s.n ? 'bg-ink text-white' : 'bg-hairline text-ink-3'">
+                :class="step === s.n ? 'bg-brand text-white' : step > s.n ? 'bg-ink text-white' : 'bg-hairline text-ink-3'">
             {{ step > s.n ? '✓' : s.n }}
           </span>
           {{ s.label }}
@@ -227,7 +227,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
         </Field>
       </div>
       <div class="mt-6 flex gap-2">
-        <button class="rounded-full bg-ink px-5 py-2.5 text-[13.5px] font-medium text-white disabled:opacity-40"
+        <button class="rounded-full bg-brand hover:bg-brand-2 px-5 py-2.5 text-[13.5px] font-medium text-white disabled:bg-ink/[0.05] disabled:text-ink-3"
                 :disabled="!draft.name || !draft.baseUrl || busy" @click="createSuite">
           {{ busy ? 'Creating…' : 'Create suite' }}
         </button>
@@ -243,7 +243,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
           The runner refuses to open an origin nobody approved, and no script can approve one.
           This button is the only way in, and it is deliberately a person pressing it.
         </p>
-        <button class="mt-4 rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white disabled:opacity-40"
+        <button class="mt-4 rounded-full bg-brand hover:bg-brand-2 px-4 py-2 text-[13px] font-medium text-white disabled:bg-ink/[0.05] disabled:text-ink-3"
                 :disabled="busy" @click="allow">Allow {{ origin }}</button>
       </div>
       <div v-else class="flex items-center gap-2 rounded-xl border border-hairline bg-panel px-4 py-2.5 text-[13px]">
@@ -266,7 +266,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
             <span v-if="p.targets.length" class="shrink-0 text-[12px] text-ink-2">
               {{ p.targets.length }} targets
             </span>
-            <button class="shrink-0 rounded-full border border-hairline px-3 py-1.5 text-[12.5px] disabled:opacity-40"
+            <button class="shrink-0 rounded-full border border-hairline px-3 py-1.5 text-[12.5px] disabled:bg-ink/[0.05] disabled:text-ink-3"
                     :disabled="scanning === p.id || !allowed" @click="scan(p)">
               {{ scanning === p.id ? 'Scanning…' : p.targets.length ? 'Re-scan' : 'Scan' }}
             </button>
@@ -283,7 +283,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
           <p class="mt-5 eyebrow">Linked from the pages you scanned</p>
           <div class="mt-2 flex flex-wrap gap-1.5">
             <button v-for="l in suggestions" :key="l.path"
-                    class="rounded-full border border-hairline px-3 py-1.5 text-[12.5px] hover:border-ink/30 disabled:opacity-40"
+                    class="rounded-full border border-hairline px-3 py-1.5 text-[12.5px] hover:border-ink/30 disabled:bg-ink/[0.05] disabled:text-ink-3"
                     :disabled="busy" @click="addSuggested(l)">
               + {{ l.name }} <span class="font-mono opacity-55">{{ l.path }}</span>
             </button>
@@ -299,13 +299,13 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
           <Field label="Path" class="flex-1">
             <input v-model="newPage.path" placeholder="/login" spellcheck="false" :disabled="busy" @keyup.enter="addPage">
           </Field>
-          <button class="mb-0.5 rounded-full border border-hairline px-4 py-2 text-[13px] disabled:opacity-40"
+          <button class="mb-0.5 rounded-full border border-hairline px-4 py-2 text-[13px] disabled:bg-ink/[0.05] disabled:text-ink-3"
                   :disabled="!newPage.name || busy" @click="addPage">Add page</button>
         </div>
       </div>
 
       <div class="flex gap-2">
-        <button class="rounded-full bg-ink px-5 py-2.5 text-[13.5px] font-medium text-white disabled:opacity-40"
+        <button class="rounded-full bg-brand hover:bg-brand-2 px-5 py-2.5 text-[13.5px] font-medium text-white disabled:bg-ink/[0.05] disabled:text-ink-3"
                 :disabled="!suite.pages.length" @click="step = 3">Next — expectations</button>
         <button class="rounded-full border border-hairline px-5 py-2.5 text-[13.5px]" @click="finish">Finish later</button>
       </div>
@@ -330,7 +330,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
 
           <p class="mt-3 eyebrow">The URL</p>
           <button class="mt-1.5 rounded-full border px-3 py-1.5 text-[12.5px]"
-                  :class="has(p, 'url', p.path) ? 'border-ink bg-ink text-white' : 'border-hairline'"
+                  :class="has(p, 'url', p.path) ? 'border-brand bg-brand-50 font-medium text-brand-2' : 'border-hairline'"
                   @click="toggleExpect(p, 'url', p.path)">
             URL contains {{ p.path }}
           </button>
@@ -340,7 +340,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
             <div class="mt-1.5 flex flex-wrap gap-1.5">
               <button v-for="t in textOptions(p)" :key="t.name"
                       class="rounded-full border px-3 py-1.5 text-[12.5px]"
-                      :class="has(p, 'text', t.name) ? 'border-ink bg-ink text-white' : 'border-hairline'"
+                      :class="has(p, 'text', t.name) ? 'border-brand bg-brand-50 font-medium text-brand-2' : 'border-hairline'"
                       @click="toggleExpect(p, 'text', t.name)">
                 {{ t.name }} <span class="opacity-55">· {{ t.roles.join(', ') }}</span>
               </button>
@@ -353,7 +353,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
       </div>
 
       <div class="flex gap-2">
-        <button class="rounded-full bg-ink px-5 py-2.5 text-[13.5px] font-medium text-white disabled:opacity-40"
+        <button class="rounded-full bg-brand hover:bg-brand-2 px-5 py-2.5 text-[13.5px] font-medium text-white disabled:bg-ink/[0.05] disabled:text-ink-3"
                 :disabled="busy" @click="saveExpectations">{{ busy ? 'Saving…' : 'Save expectations' }}</button>
         <button class="rounded-full border border-hairline px-5 py-2.5 text-[13.5px]" @click="step = 2">Back</button>
       </div>
@@ -377,7 +377,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
             One case per page: reach it, and assert everything you ticked. This is the test that
             catches “the URL moved” before anyone files it as a mystery.
           </p>
-          <button class="mt-4 rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white disabled:opacity-40"
+          <button class="mt-4 rounded-full bg-brand hover:bg-brand-2 px-4 py-2 text-[13px] font-medium text-white disabled:bg-ink/[0.05] disabled:text-ink-3"
                   :disabled="busy" @click="generateChecks">{{ busy ? 'Generating…' : 'Generate cases' }}</button>
         </div>
         <div class="card p-5">

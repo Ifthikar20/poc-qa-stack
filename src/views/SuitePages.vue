@@ -115,10 +115,10 @@ function textOptions(p) {
       <p class="mt-4 eyebrow">Expectations</p>
       <div class="mt-2 flex flex-wrap gap-1.5">
         <button class="rounded-full border px-3 py-1.5 text-[12.5px]"
-                :class="has(p, 'url', p.path) ? 'border-ink bg-ink text-white' : 'border-hairline'"
+                :class="has(p, 'url', p.path) ? 'border-brand bg-brand-50 font-medium text-brand-2' : 'border-hairline'"
                 @click="toggle(p, 'url', p.path)">URL contains {{ p.path }}</button>
         <button v-for="t in textOptions(p)" :key="t.name" class="rounded-full border px-3 py-1.5 text-[12.5px]"
-                :class="has(p, 'text', t.name) ? 'border-ink bg-ink text-white' : 'border-hairline'"
+                :class="has(p, 'text', t.name) ? 'border-brand bg-brand-50 font-medium text-brand-2' : 'border-hairline'"
                 @click="toggle(p, 'text', t.name)">
           {{ t.name }} <span class="opacity-55">· {{ t.roles.join(', ') }}</span>
         </button>

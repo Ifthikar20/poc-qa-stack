@@ -19,10 +19,15 @@ defineProps({
   size: { type: String, default: 'md' },           // sm | md
 });
 
+/**
+ * Primary is the accent; danger stays red and stays an outline. Two warm hues
+ * would be confusable as fills, so the shapes differ as well as the colours —
+ * you are never deciding between a pink block and a red block.
+ */
 const LOOK = {
-  primary: 'bg-ink text-white hover:bg-ink/90',
-  ghost:   'border border-hairline text-ink hover:border-ink/30 hover:bg-ink/[0.03]',
-  danger:  'border border-critical/40 text-critical hover:bg-critical/5',
+  primary: 'bg-brand text-white hover:bg-brand-2',
+  ghost:   'border border-hairline bg-panel text-ink hover:border-ink/25 hover:bg-ink/[0.03]',
+  danger:  'border border-critical/40 bg-panel text-critical hover:bg-critical/5',
 };
 const SIZE = { sm: 'px-3 py-1.5 text-[12.5px]', md: 'px-4 py-2 text-[13px]' };
 </script>
@@ -33,7 +38,8 @@ const SIZE = { sm: 'px-3 py-1.5 text-[12.5px]', md: 'px-4 py-2 text-[13px]' };
     :disabled="busy || disabled"
     class="inline-flex items-center justify-center gap-2 rounded-full font-medium
            transition-[transform,background-color,border-color,opacity] duration-75
-           active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100"
+           active:scale-[0.97] disabled:cursor-not-allowed disabled:active:scale-100
+           disabled:border-hairline disabled:bg-ink/[0.05] disabled:text-ink-3"
     :class="[LOOK[variant], SIZE[size]]">
     <svg v-if="busy" class="size-3.5 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" opacity=".25" />
