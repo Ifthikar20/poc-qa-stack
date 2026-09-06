@@ -5,16 +5,20 @@
  * suite-specific below. The open suite expands into its own sections, so
  * "where am I" is answered by the nav rather than by the breadcrumb alone.
  */
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useSuites } from '@/stores/suites';
 import { useLive } from '@/stores/live';
+import { api } from '@/api';
 
 const route = useRoute();
 const suites = useSuites();
 const live = useLive();
 
 const openId = computed(() => route.params.id ?? null);
+
+const version = ref(null);
+onMounted(async () => { version.value = await api.version().catch(() => null); });
 
 const SECTIONS = [
   { to: 'suite',       label: 'Overview' },
@@ -86,6 +90,11 @@ const SECTIONS = [
     <div class="m-3 rounded-xl border border-night-line bg-night-2 p-3 text-[12px] leading-relaxed text-white/55">
       <p class="font-medium text-white/85">Suites are project data</p>
       <p class="mt-1">They live in <code class="text-white/70">suites/*.json</code> and belong in git. Run history stays on this machine.</p>
+      <!-- What is actually running. "Am I on the latest?" should be answerable
+           by looking, not by remembering whether you pulled and rebuilt. -->
+      <p v-if="version" class="mt-2.5 border-t border-night-line pt-2.5 font-mono text-[11px] text-white/40">
+        {{ version.commit ?? 'no git' }} · ui {{ version.built ? version.built.replace('T', ' ').slice(5, 16) : 'not built' }}
+      </p>
     </div>
   </aside>
 </template>
