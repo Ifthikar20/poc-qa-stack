@@ -7,8 +7,16 @@
  * it rather than opening their own.
  *
  * Binary messages are screencast frames; text messages are events. Frames are
- * handed to whoever registered `onFrame` (the console's canvas) and dropped
- * otherwise — decoding video for a page that is not showing it is pure waste.
+ * handed to whoever registered `onFrame` (the console's canvas), and the most
+ * recent one is KEPT even when nobody is looking.
+ *
+ * That last part is not an optimisation, it is the fix for a black canvas.
+ * Chrome's screencast is damage-driven: a page that is sitting still emits
+ * nothing at all. The server primes each new socket with one frame, but the
+ * socket opens when the app loads and the canvas only exists once you navigate
+ * to the console — so that frame arrived, found no canvas, and was dropped.
+ * Open the console on an idle page and you would wait forever for a second
+ * frame that was never coming.
  */
 import { defineStore } from 'pinia';
 
@@ -35,6 +43,8 @@ export const useLive = defineStore('live', {
     diagram: null,
     ws: null,
     onFrame: null,      // set by the console view while it is mounted
+    lastFrame: null,    // held for whoever attaches next
+    painted: false,     // has a canvas actually drawn one?
   }),
 
   getters: {
@@ -50,7 +60,11 @@ export const useLive = defineStore('live', {
       ws.binaryType = 'blob';
       this.ws = ws;
 
-      ws.onopen = () => { this.connected = true; };
+      ws.onopen = () => {
+        this.connected = true;
+        // A reconnect starts with no picture, and the page may be idle.
+        this.send({ t: 'frame.request' });
+      };
       ws.onclose = () => {
         this.connected = false;
         // The server restarts often while you are working on it. Reconnecting
@@ -58,7 +72,10 @@ export const useLive = defineStore('live', {
         setTimeout(() => this.connect(), 1200);
       };
       ws.onmessage = (e) => {
-        if (typeof e.data !== 'string') return void this.onFrame?.(e.data);
+        if (typeof e.data !== 'string') {
+          this.lastFrame = e.data;
+          return void this.onFrame?.(e.data);
+        }
         let ev; try { ev = JSON.parse(e.data); } catch { return; }
         this.handle(ev);
       };
@@ -66,6 +83,21 @@ export const useLive = defineStore('live', {
 
     send(msg) {
       if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(msg));
+    },
+
+    /**
+     * A canvas is ready. Give it the frame we already have, if any, and ask
+     * the server for a fresh one — the page may not have moved since.
+     */
+    attachCanvas(fn) {
+      this.onFrame = fn;
+      if (this.lastFrame) fn(this.lastFrame);
+      this.send({ t: 'frame.request' });
+    },
+
+    detachCanvas() {
+      this.onFrame = null;
+      this.painted = false;
     },
 
     say(msg, level = 'info') {

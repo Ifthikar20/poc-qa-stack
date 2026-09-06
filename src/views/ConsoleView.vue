@@ -34,12 +34,13 @@ const urlBox = ref('');
 const caseName = ref('Recorded flow');
 const saved = ref(null);
 const error = ref(null);
+const opening = ref(null);
 
 const suiteId = computed(() => route.query.suite ?? null);
 const suite = computed(() => suites.list.find((s) => s.id === suiteId.value) ?? null);
 
 // ------------------------------------------------------------------ frames
-let ctx, url;
+let ctx;
 function paint(blob) {
   if (!ctx) return;
   // One object URL at a time. Creating one per frame without revoking it leaks
@@ -49,18 +50,34 @@ function paint(blob) {
   img.onload = () => {
     ctx.drawImage(img, 0, 0, VIEW.w, VIEW.h);
     URL.revokeObjectURL(next);
+    live.painted = true;          // the black rectangle is gone
   };
+  img.onerror = () => URL.revokeObjectURL(next);
   img.src = next;
 }
 
 onMounted(async () => {
   ctx = canvas.value.getContext('2d', { alpha: false });
-  live.onFrame = paint;
   live.connect();
+  live.attachCanvas(paint);       // replays the frame the store already holds
   if (!suites.list.length) await suites.loadList();
   if (route.query.url) { urlBox.value = route.query.url; open(); }
 });
-onBeforeUnmount(() => { live.onFrame = null; if (url) URL.revokeObjectURL(url); });
+onBeforeUnmount(() => live.detachCanvas());
+
+/**
+ * What the canvas is waiting for, in the user's terms.
+ *
+ * A black rectangle is indistinguishable from a crash. These are the three
+ * real states, and each one tells you whether to wait, reload, or check the
+ * server.
+ */
+const waiting = computed(() => {
+  if (live.painted) return null;
+  if (!live.connected) return { title: 'Connecting to the runner', body: 'The server drives the browser you are about to see. Reconnecting…' };
+  if (opening.value) return { title: `Opening ${opening.value}`, body: 'Loading the page in the runner\u2019s browser.' };
+  return { title: 'Waiting for the first frame', body: 'The runner streams a frame whenever the page changes. If it is sitting still this can take a moment.' };
+});
 
 // ------------------------------------------------------------- interaction
 /** Canvas pixels, not CSS pixels — the element is scaled to fit. */
@@ -104,8 +121,11 @@ async function open() {
   error.value = null;
   if (!urlBox.value.trim()) return;
   live.needsOrigin = null;
-  live.send({ t: 'open', url: urlBox.value.trim() });
+  opening.value = urlBox.value.trim();
+  live.painted = false;                 // show the loading state for the new page
+  live.send({ t: 'open', url: opening.value });
 }
+watch(() => live.painted, (p) => { if (p) opening.value = null; });
 async function allow() {
   try {
     await api.allowOrigin(live.needsOrigin.origin);
@@ -166,6 +186,21 @@ watch(() => live.recordedFlow, (f) => { if (f && !script.value) script.value = f
         <svg class="pointer-events-none absolute left-0 top-0 size-6 drop-shadow" :style="cursorStyle" viewBox="0 0 24 24">
           <path d="M5 2l14 9-6 1.2L10.2 20z" fill="#fff" stroke="#0f1729" stroke-width="1.4" stroke-linejoin="round" />
         </svg>
+
+        <!-- Never a bare black rectangle: it is indistinguishable from a crash. -->
+        <div v-if="waiting"
+             class="absolute inset-0 grid place-content-center gap-3 justify-items-center bg-night px-8 text-center">
+          <svg class="size-7 animate-spin text-white/70" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".22" />
+            <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+          </svg>
+          <p class="text-[14px] font-medium text-white">{{ waiting.title }}</p>
+          <p class="max-w-sm text-[12.5px] leading-relaxed text-white/55">{{ waiting.body }}</p>
+          <button v-if="live.connected" class="mt-1 rounded-full border border-white/20 px-3.5 py-1.5 text-[12.5px] text-white/80 hover:bg-white/10"
+                  @click="live.send({ t: 'frame.request' })">
+            Ask for a frame
+          </button>
+        </div>
       </div>
 
       <div class="mt-3 flex flex-wrap items-center gap-2">
