@@ -101,6 +101,11 @@ function textOptions(p) {
         <span class="ml-auto text-[12px] text-ink-3">
           {{ p.scannedAt ? `${p.targets.length} targets` : 'not scanned' }}
         </span>
+        <!-- "the relevant page" is this one, when you are looking at this one. -->
+        <RouterLink :to="{ path: '/console', query: { suite: suite.id, url: p.url } }"
+                    class="rounded-full border border-hairline px-3 py-1.5 text-[12.5px] hover:border-ink/30">
+          Open in console
+        </RouterLink>
         <Btn variant="ghost" size="sm" :busy="scanning === p.id" busy-label="Scanning…" @click="scan(p)">
           {{ p.scannedAt ? 'Re-scan' : 'Scan' }}
         </Btn>

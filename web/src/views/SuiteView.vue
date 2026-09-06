@@ -52,6 +52,22 @@ async function runAll() {
   }
 }
 
+/**
+ * Open the console ON this suite, not merely labelled with it.
+ *
+ * It used to pass the suite id and nothing else, so the breadcrumb said
+ * "Kestrel / Console" while the canvas showed whatever the runner happened to
+ * be driving from an hour ago. The suite's first page is what "the relevant
+ * page" means here; its base URL is the fallback when it has no pages yet.
+ */
+const consoleLink = computed(() => ({
+  path: '/console',
+  query: {
+    suite: suite.value.id,
+    url: suite.value.pages[0]?.url ?? suite.value.baseUrl,
+  },
+}));
+
 const runLabel = computed(() => {
   const s = live.suiteRun;
   return s ? `Running ${Math.min(s.done + 1, s.cases)} of ${s.cases}…` : 'Running…';
@@ -61,7 +77,7 @@ const runLabel = computed(() => {
 <template>
   <TopBar :crumbs="crumbs">
     <template #actions>
-      <RouterLink v-if="suite" :to="{ path: '/console', query: { suite: suite.id } }"
+      <RouterLink v-if="suite" :to="consoleLink"
                   class="rounded-full border border-hairline px-4 py-2 text-[13.5px]">Console</RouterLink>
       <Btn v-if="suite" :busy="running || live.running" :busy-label="runLabel"
            :disabled="!store.ready" @click="runAll">Run suite</Btn>
