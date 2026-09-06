@@ -17,7 +17,15 @@ export default defineConfig({
     outDir: fileURLToPath(new URL('../public/app', import.meta.url)),
     emptyOutDir: true,
   },
-  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // The language, from the one file that defines it. The console used to
+      // reimplement "how a step reads" in a local helper, which is how three
+      // renderings of the same step end up disagreeing.
+      '@lang': fileURLToPath(new URL('../vocabulary.js', import.meta.url)),
+    },
+  },
   server: {
     port: 5173,
     proxy: {

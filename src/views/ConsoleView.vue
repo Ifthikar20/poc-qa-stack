@@ -16,6 +16,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { api } from '@/api';
 import { useLive } from '@/stores/live';
+import { showAction, labelAction } from '@lang';
 import { useSuites } from '@/stores/suites';
 import TopBar from '@/components/TopBar.vue';
 import Field from '@/components/Field.vue';
@@ -237,12 +238,18 @@ async function saveAsCase() {
   } catch (e) { error.value = e.message; } finally { saving.value = false; }
 }
 
-/** One line per step. A scroll or a bare assertion has no target to show. */
+/**
+ * One line per step, from the vocabulary rather than from a fourth opinion
+ * about how a step reads.
+ *
+ * An action writes itself back exactly as the script spells it. The three node
+ * shapes — the entry, and the url and text assertions — have no written form,
+ * so they draw themselves instead, with a wider budget than a diagram cell.
+ */
+const cap = (s, n) => (String(s ?? '').length > n ? `${String(s).slice(0, n - 1)}…` : String(s ?? ''));
 function describe(s) {
-  if (s.op === 'scroll') return `scroll to ${s.to ?? s.target}`;
-  if (s.op === 'expect') return `expect ${s.assert}${s.value ? ` ${s.value}` : ''}`;
-  if (s.op === 'wait') return `wait ${s.ms}ms`;
-  return `${s.op} ${s.target ?? s.url ?? ''}`.trim();
+  try { return showAction(s) ?? labelAction(s, (t, n) => cap(t, Math.max(n, 40))); }
+  catch { return `${s.op} ${s.target ?? s.value ?? s.url ?? ''}`.trim(); }
 }
 
 /**
