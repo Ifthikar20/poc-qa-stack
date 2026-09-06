@@ -20,6 +20,7 @@ import { useSuites } from '@/stores/suites';
 import TopBar from '@/components/TopBar.vue';
 import Field from '@/components/Field.vue';
 import FlowBox from '@/components/FlowBox.vue';
+import Btn from '@/components/Btn.vue';
 
 const VIEW = { w: 1180, h: 760 };          // must match the server's viewport
 
@@ -35,6 +36,8 @@ const caseName = ref('Recorded flow');
 const saved = ref(null);
 const error = ref(null);
 const opening = ref(null);
+const saving = ref(false);
+const allowing = ref(false);
 const cases = ref([]);
 const picked = ref('');
 const loaded = ref(null);      // which saved case is in the box, if any
@@ -95,19 +98,43 @@ function at(e) {
 const move = (e) => { const p = at(e); live.send({ t: 'human.move', ...p }); };
 
 /**
- * The wheel, forwarded.
+ * The wheel, forwarded — one message per frame, not one per tick.
  *
- * preventDefault, or the console page scrolls instead of the page you are
- * driving — which looks exactly like the feed being frozen. `passive: false` on
- * the listener is what makes preventDefault legal here.
+ * preventDefault first, or the console page scrolls instead of the page you are
+ * driving, which looks exactly like the feed being frozen.
+ *
+ * Then coalesce. A trackpad emits wheel events at well over 100/s, and the
+ * first version sent two socket messages for each one — so a single flick put
+ * several hundred messages on the wire, every one of them a separate CDP
+ * dispatch and a separate repaint. It scrolled, but in lurches. Accumulating
+ * into one message per animation frame is both smoother to watch and roughly
+ * an order of magnitude less traffic, and it matches how the browser itself
+ * batches scrolling.
  */
+let pending = { x: 0, y: 0 };
+let frame = null;
+
+function flush() {
+  frame = null;
+  const { x, y } = pending;
+  pending = { x: 0, y: 0 };
+  if (!x && !y) return;
+  live.send({ t: 'human.wheel', deltaY: y, deltaX: x });
+}
+
 function wheel(e) {
   e.preventDefault();
+  // The pointer position matters — a wheel scrolls whatever is under it, which
+  // is how an inner pane scrolls instead of the page.
   const p = at(e);
-  live.send({ t: 'human.move', ...p });
-  live.send({ t: 'human.wheel', deltaY: e.deltaY, deltaX: e.deltaX });
+  if (p.x !== live.cursor.x || p.y !== live.cursor.y) live.send({ t: 'human.move', ...p });
+  pending.y += e.deltaY;
+  pending.x += e.deltaX;
+  frame ??= requestAnimationFrame(flush);
 }
-const scrollTo = (where) => live.send({ t: 'human.wheel', deltaY: where === 'top' ? -100000 : 100000 });
+onBeforeUnmount(() => { if (frame) cancelAnimationFrame(frame); });
+
+const scrollTo = (where) => live.send({ t: 'human.scrollTo', to: where });
 const click = (e) => { const p = at(e); live.send({ t: 'human.move', ...p }); live.send({ t: 'human.click' }); };
 function key(e) {
   if (e.key.length === 1) { e.preventDefault(); live.send({ t: 'human.key', text: e.key }); }
@@ -131,6 +158,7 @@ async function open() {
 }
 watch(() => live.painted, (p) => { if (p) opening.value = null; });
 async function allow() {
+  allowing.value = true;
   try {
     const { origin, url, redirected } = live.needsOrigin;
     await api.allowOrigin(origin);
@@ -138,7 +166,7 @@ async function allow() {
     // A redirect prompt is about a page we are ALREADY on — reopening it would
     // throw away whatever you were doing there, recording included.
     if (url && !redirected) { urlBox.value = url; open(); }
-  } catch (e) { error.value = e.message; }
+  } catch (e) { error.value = e.message; } finally { allowing.value = false; }
 }
 const run = () => live.send({ t: 'command', text: script.value });
 const record = () => live.send({ t: 'record.start' });
@@ -171,7 +199,7 @@ function pick(id) {
 
 /** The hand-off that makes teach mode worth having: recording -> stored case. */
 async function saveAsCase() {
-  error.value = null; saved.value = null;
+  error.value = null; saved.value = null; saving.value = true;
   try {
     const { case: c } = await api.addCase(suiteId.value, {
       name: caseName.value, flow: live.recordedFlow, source: 'recorded',
@@ -181,7 +209,7 @@ async function saveAsCase() {
     await loadCases();          // it should be selectable straight away
     picked.value = c.id;
     loaded.value = { ...c, suite: suite.value?.name ?? suiteId.value };
-  } catch (e) { error.value = e.message; }
+  } catch (e) { error.value = e.message; } finally { saving.value = false; }
 }
 
 /** One line per step. A scroll or a bare assertion has no target to show. */
@@ -257,8 +285,8 @@ watch(() => live.recordedFlow, (f) => {
         <input v-model="urlBox" spellcheck="false" placeholder="localhost:3000/demo.html"
                class="min-w-0 flex-1 rounded-full border border-hairline bg-panel px-4 py-2 text-[13.5px] outline-none focus:border-ink/25"
                @keyup.enter="open">
-        <button class="rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white" @click="open">Open</button>
-        <button class="rounded-full border border-hairline px-4 py-2 text-[13px]" @click="live.send({ t: 'inspect' })">Re-scan</button>
+        <Btn :busy="!!opening" busy-label="Opening…" @click="open">Open</Btn>
+        <Btn variant="ghost" @click="live.send({ t: 'inspect' })">Re-scan</Btn>
         <span class="flex overflow-hidden rounded-full border border-hairline">
           <button class="px-3 py-2 text-[13px] hover:bg-ink/5" title="Scroll to the top of the page"
                   @click="scrollTo('top')">↑ Top</button>
@@ -284,9 +312,9 @@ watch(() => live.recordedFlow, (f) => {
         </p>
         <p v-else class="mt-1 text-[13px] text-ink-2">The gate only opens for a person. Nothing generated can reach this button.</p>
         <div class="mt-3 flex gap-2">
-          <button class="rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white" @click="allow">
+          <Btn :busy="allowing" busy-label="Allowing…" @click="allow">
             {{ live.needsOrigin.url && !live.needsOrigin.redirected ? 'Allow it and open' : 'Allow it' }}
-          </button>
+          </Btn>
           <button class="rounded-full border border-hairline px-4 py-2 text-[13px]" @click="live.needsOrigin = null">Cancel</button>
         </div>
       </div>
@@ -312,9 +340,8 @@ watch(() => live.recordedFlow, (f) => {
             </optgroup>
           </select>
 
-          <button class="rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white disabled:opacity-40"
-                  :class="!cases.length && 'ml-auto'"
-                  :disabled="live.running || !script.trim()" @click="run">Run script</button>
+          <Btn :class="!cases.length && 'ml-auto'" :busy="live.running" busy-label="Running…"
+               :disabled="!script.trim()" @click="run">Run script</Btn>
         </div>
         <p v-if="loaded" class="mt-2 flex items-center gap-2 text-[12.5px] text-ink-3">
           Loaded <b class="font-medium text-ink">{{ loaded.name }}</b>
@@ -348,9 +375,7 @@ watch(() => live.recordedFlow, (f) => {
           <Field label="Save into this suite" :hint="`Goes to ${suite?.name ?? suiteId} as a case.`">
             <input v-model="caseName" placeholder="Sign in works" @keyup.enter="saveAsCase">
           </Field>
-          <button class="mt-3 rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white" @click="saveAsCase">
-            Save as a case
-          </button>
+          <Btn class="mt-3" :busy="saving" busy-label="Saving…" @click="saveAsCase">Save as a case</Btn>
           <p v-if="saved" class="mt-2 text-[12.5px] text-good">Saved “{{ saved }}”.</p>
         </div>
         <p v-else-if="!suiteId && live.recordedFlow" class="mt-3 text-[12.5px] text-ink-3">

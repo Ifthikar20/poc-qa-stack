@@ -15,6 +15,7 @@ import Field from '@/components/Field.vue';
 import FlowBox from '@/components/FlowBox.vue';
 import StatusPill from '@/components/StatusPill.vue';
 import EmptyState from '@/components/EmptyState.vue';
+import Btn from '@/components/Btn.vue';
 
 const store = useSuites();
 const live = useLive();
@@ -126,10 +127,8 @@ const pageName = (id) => suite.value.pages.find((p) => p.id === id)?.name ?? nul
         </div>
         <StatusPill v-if="results[c.id] !== undefined" :ok="results[c.id]" size="sm" class="ml-2" />
         <div class="ml-auto flex shrink-0 gap-2">
-          <button class="rounded-full border border-hairline px-3 py-1.5 text-[12.5px] disabled:opacity-40"
-                  :disabled="running === c.id || live.running" @click="runOne(c)">
-            {{ running === c.id ? 'Running…' : 'Run' }}
-          </button>
+          <Btn variant="ghost" size="sm" :busy="running === c.id" busy-label="Running…"
+               :disabled="live.running" @click="runOne(c)">Run</Btn>
           <button class="rounded-full border border-hairline px-3 py-1.5 text-[12.5px]" @click="startEdit(c)">
             {{ open === c.id ? 'Close' : 'Edit' }}
           </button>
