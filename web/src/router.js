@@ -21,6 +21,7 @@ const routes = [
       { path: 'runs', name: 'suite-runs', component: () => import('@/views/SuiteRuns.vue') },
     ],
   },
+  { path: '/defects', name: 'defects', component: () => import('@/views/DefectsView.vue') },
   { path: '/console', name: 'console', component: () => import('@/views/ConsoleView.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
   { path: '/:rest(.*)', redirect: '/suites' },

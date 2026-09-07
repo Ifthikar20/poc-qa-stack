@@ -45,6 +45,7 @@ const ICONS = {
   suite:   'M3 5.5h10M3 8h10M3 10.5h6',
   history: 'M8 4.2v4l2.6 1.6M2.6 8a5.4 5.4 0 1 0 1.6-3.8',
   console: 'M2.5 3.5h11v9h-11zM5 7l1.8 1.6L5 10.2M8.8 10.4h2.6',
+  defects: 'M8 2.6 14.2 13H1.8zM8 6.4v3.1M8 11.3v.5',
   settings:'M8 5.9a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2M8 2.3l1 1.5 1.8-.3.5 1.7 1.6.8-.6 1.7.9 1.6-1.4 1.1v1.8l-1.8.2-1 1.5L8 13l-1 .9-1-1.5-1.8-.2v-1.8L2.8 9.3l.9-1.6-.6-1.7 1.6-.8.5-1.7L7 3.8z',
 };
 </script>
@@ -121,6 +122,13 @@ const ICONS = {
           <path :d="ICONS.history" />
         </svg>
         Run history
+      </RouterLink>
+      <RouterLink to="/defects" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on">
+        <svg viewBox="0 0 16 16" class="size-4 shrink-0" fill="none" stroke="currentColor"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path :d="ICONS.defects" />
+        </svg>
+        Defects
       </RouterLink>
       <RouterLink to="/console" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on">
         <svg viewBox="0 0 16 16" class="size-4 shrink-0" fill="none" stroke="currentColor"

@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { api } from '@/api';
+import HeroPanel from '@/components/HeroPanel.vue';
 import TopBar from '@/components/TopBar.vue';
 import RunsChart from '@/components/RunsChart.vue';
 import StatTile from '@/components/StatTile.vue';
@@ -31,14 +32,14 @@ const match = (rows) => rows.filter((r) => (r.suite ?? '').toLowerCase().include
   </TopBar>
 
   <div class="mx-auto max-w-6xl px-6 py-8">
-    <header class="card wash mb-6 p-7">
+    <HeroPanel seed="dashboard">
       <p class="eyebrow">Run history</p>
       <h1 class="mt-1.5 display text-4xl">Every run, and what broke.</h1>
       <p class="mt-3 max-w-xl text-[15px] leading-relaxed text-ink-2">
         Each case that finishes is recorded here — which suite, how long it took, and the step it
         stopped on.
       </p>
-    </header>
+    </HeroPanel>
 
     <EmptyState v-if="!data || !data.totals.runs" title="No runs yet"
                 body="Onboard a suite and run it; the outcomes land here." >
