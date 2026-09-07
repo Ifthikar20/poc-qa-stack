@@ -174,6 +174,9 @@ export const useLive = defineStore('live', {
           break;
         case 'origins': this.origins = ev.origins; break;
         case 'secrets': this.secrets = ev.secrets; break;
+        // Cheap and immediate; `targets` carries the same URL but arrives
+        // after discovery, which is far too late for an address bar.
+        case 'url': this.url = ev.url; break;
         case 'targets': this.url = ev.url; this.targets = ev.items; break;
         case 'cursor': this.cursor = { x: ev.x, y: ev.y }; break;
         case 'press': this.ripple++; break;
