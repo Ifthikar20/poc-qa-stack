@@ -36,6 +36,7 @@ const urlBox = ref('');
 const caseName = ref('Recorded flow');
 const saved = ref(null);
 const error = ref(null);
+const saveError = ref(null);   // shown in the Recording card, beside the button
 const opening = ref(null);
 const saving = ref(false);
 const allowing = ref(false);
@@ -223,9 +224,18 @@ function pick(id) {
   loaded.value = c;
 }
 
-/** The hand-off that makes teach mode worth having: recording -> stored case. */
+/**
+ * The hand-off that makes teach mode worth having: recording -> stored case.
+ *
+ * A failure here reports NEXT TO THE BUTTON. It used to set the page-level
+ * error, which renders below the log at the bottom of a long scrolling page —
+ * so a refused save looked exactly like a button that did nothing, and the
+ * commonest refusal is a real one worth reading: the case is validated on the
+ * way in with the same parser the executor uses, and a recording made on an
+ * origin nobody allowed cannot be stored.
+ */
 async function saveAsCase() {
-  error.value = null; saved.value = null; saving.value = true;
+  saveError.value = null; saved.value = null; saving.value = true;
   try {
     const { case: c } = await api.addCase(suiteId.value, {
       name: caseName.value, flow: live.recordedFlow, source: 'recorded',
@@ -235,7 +245,12 @@ async function saveAsCase() {
     await loadCases();          // it should be selectable straight away
     picked.value = c.id;
     loaded.value = { ...c, suite: suite.value?.name ?? suiteId.value };
-  } catch (e) { error.value = e.message; } finally { saving.value = false; }
+  } catch (e) {
+    // The gate is a decision, not a dead end: offer the one action that
+    // unblocks it rather than a sentence about why you cannot save.
+    if (e.needsOrigin) live.needsOrigin = { origin: e.needsOrigin, redirected: true };
+    saveError.value = e.message;
+  } finally { saving.value = false; }
 }
 
 /**
@@ -409,6 +424,10 @@ watch(() => live.recordedFlow, (f) => {
           </Field>
           <Btn class="mt-3" :busy="saving" busy-label="Saving…" @click="saveAsCase">Save as a case</Btn>
           <p v-if="saved" class="mt-2 text-[12.5px] text-good">Saved “{{ saved }}”.</p>
+          <p v-if="saveError"
+             class="mt-2 rounded-lg border border-critical/25 bg-critical/5 px-3 py-2 text-[12.5px] text-critical">
+            {{ saveError }}
+          </p>
         </div>
         <p v-else-if="!suiteId && live.recordedFlow" class="mt-3 text-[12.5px] text-ink-3">
           Open the console from a suite to save this straight into it.
@@ -484,7 +503,7 @@ watch(() => live.recordedFlow, (f) => {
       <section class="card p-5">
         <h2 class="text-[15px] font-medium">Log</h2>
         <ul class="mt-3 max-h-64 space-y-1 overflow-y-auto font-mono text-[11.5px]">
-          <li v-for="l in live.log" :key="l.id" :class="l.level === 'error' ? 'text-critical' : 'text-ink-2'">
+          <li v-for="l in live.log" :key="l.id" :class="{ error: 'text-critical', warn: 'text-warn' }[l.level] ?? 'text-ink-2'">
             {{ l.msg }}
           </li>
           <li v-if="!live.log.length" class="text-ink-3">Nothing yet.</li>
