@@ -30,6 +30,8 @@ export const api = {
   state:   () => req('/api/state'),
   version: () => req('/api/version'),
   runs:    (suite) => req(`/api/runs${suite ? `?suite=${encodeURIComponent(suite)}` : ''}`),
+  defects: () => req('/api/defects'),
+  hero:    () => req('/api/hero'),
 
   origins:      () => req('/api/origins'),
   allowOrigin:  (origin) => req('/api/origins', { method: 'POST', body: { origin } }),

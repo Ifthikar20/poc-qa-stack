@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { api } from '@/api';
 import { useSuites } from '@/stores/suites';
 import { useLive } from '@/stores/live';
+import HeroPanel from '@/components/HeroPanel.vue';
 import StatTile from '@/components/StatTile.vue';
 import StatusPill from '@/components/StatusPill.vue';
 import EmptyState from '@/components/EmptyState.vue';
@@ -41,14 +42,14 @@ async function allow() {
 
 <template>
   <div>
-    <header class="card wash mb-6 p-7">
+    <HeroPanel seed="suite-overview">
       <p class="eyebrow">Suite</p>
       <h1 class="mt-1.5 display text-4xl">{{ suite.name }}</h1>
       <p class="mt-2 font-mono text-[13px] text-ink-2">{{ suite.baseUrl }}</p>
       <p v-if="suite.description" class="mt-3 max-w-xl text-[14.5px] leading-relaxed text-ink-2">
         {{ suite.description }}
       </p>
-    </header>
+    </HeroPanel>
 
     <div v-if="!store.allowed" class="card mb-6 border-critical/25 p-5">
       <p class="text-[13.5px] font-medium">{{ store.origin }} is not allowed yet.</p>

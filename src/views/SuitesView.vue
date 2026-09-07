@@ -16,6 +16,7 @@ import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '@/api';
 import { useSuites } from '@/stores/suites';
+import HeroPanel from '@/components/HeroPanel.vue';
 import TopBar from '@/components/TopBar.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Btn from '@/components/Btn.vue';
@@ -62,7 +63,7 @@ async function allowAndRetry() {
   </TopBar>
 
   <div class="mx-auto max-w-5xl px-6 py-8">
-    <header class="card wash mb-6 p-7">
+    <HeroPanel seed="suites">
       <p class="eyebrow">Test suites</p>
       <h1 class="mt-1.5 display text-4xl">Point it at your app.</h1>
       <p class="mt-3 max-w-xl text-[15px] leading-relaxed text-ink-2">
@@ -92,7 +93,7 @@ async function allowAndRetry() {
       <p v-if="error" class="mt-4 max-w-2xl rounded-xl border border-critical/25 bg-critical/5 px-4 py-3 text-[13px] text-critical">
         {{ error }}
       </p>
-    </header>
+    </HeroPanel>
 
     <EmptyState v-if="!store.list.length" title="No suites yet"
                 body="Use the field above for a quick look, or set one up properly — name it, add its pages, and choose what has to be true on each.">
