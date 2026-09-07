@@ -8,9 +8,17 @@
  * `needsOrigin` is not really an error, it is the app asking a person to
  * decide, so the error object carries that through for the view to offer a
  * button instead of a red box.
+ *
+ * Every path goes through `apiUrl`, which is the identity function while the
+ * backend serves this app and a real origin once it does not. Writing the
+ * paths bare would work today and fail silently the day the frontend is
+ * deployed on its own — as 404s from a static host, which look like a broken
+ * API rather than a missing one.
  */
+import { apiUrl } from '@/config';
+
 async function req(path, { method = 'GET', body } = {}) {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     method,
     headers: body ? { 'content-type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
