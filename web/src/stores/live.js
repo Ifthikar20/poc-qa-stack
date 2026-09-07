@@ -45,6 +45,19 @@ export const useLive = defineStore('live', {
     navs: [],           // recent navigations, newest first
     console: [],        // the DRIVEN page's console, newest first
     showConsole: false, // off by default: a chatty app would bury the script
+    /**
+     * How much of a run to perform: 'watch' is the server's own pace, 'fast'
+     * removes the performance entirely.
+     *
+     * Kept here rather than in a view because two different paths start runs —
+     * the console over the socket, a suite over HTTP — and a setting that only
+     * one of them honoured would be worse than not having it.
+     *
+     * Per-viewer and remembered, so choosing it once is choosing it. It is not
+     * shared state: two people watching the same runner can legitimately
+     * disagree about whether they want to watch.
+     */
+    pace: (() => { try { return localStorage.getItem('gc.pace') === 'fast' ? 'fast' : 'watch'; } catch { return 'watch'; } })(),
     diagram: null,
     ws: null,
     onFrame: null,      // set by the console view while it is mounted
@@ -55,6 +68,11 @@ export const useLive = defineStore('live', {
   getters: {
     // A run is finished when every step has a verdict or one of them failed.
     lastError: (s) => s.run?.steps.find((x) => x.state === 'fail')?.error ?? null,
+    /**
+     * What to send with a run. `undefined` for 'watch' rather than a number:
+     * the server's own default is the right answer and it may not be 420.
+     */
+    paceMs: (s) => (s.pace === 'fast' ? 0 : undefined),
   },
 
   actions: {
@@ -117,6 +135,11 @@ export const useLive = defineStore('live', {
 
     send(msg) {
       if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(msg));
+    },
+
+    setPace(pace) {
+      this.pace = pace === 'fast' ? 'fast' : 'watch';
+      try { localStorage.setItem('gc.pace', this.pace); } catch { /* private window */ }
     },
 
     /**

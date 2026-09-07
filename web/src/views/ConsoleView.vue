@@ -205,7 +205,7 @@ async function allow() {
     if (url && !redirected) { urlBox.value = url; open(); }
   } catch (e) { error.value = e.message; } finally { allowing.value = false; }
 }
-const run = () => live.send({ t: 'command', text: script.value });
+const run = () => live.send({ t: 'command', text: script.value, pace: live.paceMs });
 const record = () => live.send({ t: 'record.start' });
 const stop = () => live.send({ t: 'record.stop' });
 const useRecording = () => { script.value = live.recordedFlow; autofilled = live.recordedFlow; loaded.value = null; };
@@ -454,7 +454,25 @@ watch(() => live.recordedFlow, (f) => {
             </optgroup>
           </select>
 
-          <Btn :class="!cases.length && 'ml-auto'" :busy="live.running" busy-label="Running…"
+          <!-- How much of the run is performed for you.
+               A replay glides the pointer, pauses before each click and types a
+               character at a time, so that a feed running at roughly ten frames
+               a second shows something a person can follow. That is about two
+               thirds of a second per click step, and it is worth nothing at all
+               when you are not watching. -->
+          <div :class="['flex overflow-hidden rounded-full border border-hairline', !cases.length && 'ml-auto']"
+               role="group" aria-label="Run speed">
+            <button v-for="p in [['watch', 'Watch'], ['fast', 'Fast']]" :key="p[0]"
+                    class="px-3 py-1.5 text-[12.5px]"
+                    :class="live.pace === p[0] ? 'bg-brand-50 font-medium text-brand-2' : 'text-ink-3 hover:bg-ink/[0.04]'"
+                    :aria-pressed="live.pace === p[0]"
+                    :title="p[0] === 'watch'
+                      ? 'Glide the pointer and pause, so a run can be followed'
+                      : 'No performance — as fast as the page allows'"
+                    @click="live.setPace(p[0])">{{ p[1] }}</button>
+          </div>
+
+          <Btn :busy="live.running" busy-label="Running…"
                :disabled="!script.trim()" @click="run">Run script</Btn>
         </div>
         <p v-if="loaded" class="mt-2 flex items-center gap-2 text-[12.5px] text-ink-3">

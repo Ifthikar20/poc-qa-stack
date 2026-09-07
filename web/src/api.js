@@ -76,5 +76,12 @@ export const api = {
   updateCase: (id, cid, body) => req(`/api/suites/${id}/cases/${cid}`, { method: 'PATCH', body }),
   removeCase: (id, cid) => req(`/api/suites/${id}/cases/${cid}`, { method: 'DELETE' }),
 
-  runSuite:   (id, caseId) => req(`/api/suites/${id}/run${caseId ? `?case=${caseId}` : ''}`, { method: 'POST' }),
+  runSuite:   (id, caseId, pace) => {
+    const q = new URLSearchParams();
+    if (caseId) q.set('case', caseId);
+    // Only when it is actually chosen — an absent pace means "the server's
+    // default", which is not the same as any number this app could guess.
+    if (pace !== undefined) q.set('pace', String(pace));
+    return req(`/api/suites/${id}/run${q.size ? `?${q}` : ''}`, { method: 'POST' });
+  },
 };

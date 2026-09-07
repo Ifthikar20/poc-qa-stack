@@ -62,7 +62,7 @@ async function runAll() {
   await nextTick();
 
   try {
-    const r = await api.runSuite(id);
+    const r = await api.runSuite(id, null, live.paceMs);
     if (r.passed < r.total) {
       live.say(`${r.total - r.passed} of ${r.total} cases failed`, 'error');
     }
