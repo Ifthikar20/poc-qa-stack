@@ -41,6 +41,8 @@ export const useLive = defineStore('live', {
     ripple: 0,
     needsOrigin: null,
     navs: [],           // recent navigations, newest first
+    console: [],        // the DRIVEN page's console, newest first
+    showConsole: false, // off by default: a chatty app would bury the script
     diagram: null,
     ws: null,
     onFrame: null,      // set by the console view while it is mounted
@@ -126,6 +128,12 @@ export const useLive = defineStore('live', {
         case 'diagram': this.diagram = ev.mermaid; break;
         case 'needs.origin':
           this.needsOrigin = { origin: ev.origin, url: ev.url, redirected: ev.redirected };
+          break;
+        // The driven page's own console. Capped like the log — a page in a
+        // render loop can print faster than anyone can read.
+        case 'console':
+          this.console.unshift({ id: `${Date.now()}-${Math.random()}`, ...ev });
+          if (this.console.length > MAX_LOG) this.console.length = MAX_LOG;
           break;
         case 'nav':
           this.navs.unshift({ id: `${Date.now()}-${Math.random()}`, ...ev });

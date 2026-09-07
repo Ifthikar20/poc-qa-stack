@@ -152,7 +152,6 @@ function wheel(e) {
 }
 onBeforeUnmount(() => { if (frame) cancelAnimationFrame(frame); });
 
-const scrollTo = (where) => live.send({ t: 'human.scrollTo', to: where });
 const click = (e) => { const p = at(e); live.send({ t: 'human.move', ...p }); live.send({ t: 'human.click' }); };
 function key(e) {
   if (e.key.length === 1) { e.preventDefault(); live.send({ t: 'human.key', text: e.key }); }
@@ -246,6 +245,14 @@ const fold = (rows, same) => {
   return out;
 };
 const logLines = computed(() => fold(live.log, (a, b) => a.msg === b.msg && a.level === b.level));
+
+/**
+ * The driven page's console, folded the same way. A render loop that logs on
+ * every frame is one line with a count, not four hundred lines.
+ */
+const consoleLines = computed(() => fold(live.console, (a, b) => a.text === b.text && a.level === b.level));
+/** Errors are the reason to look, so the count is on the collapsed header. */
+const consoleErrors = computed(() => live.console.filter((l) => l.level === 'error').length);
 
 /** Reopening the same page four times is one fact, not four. */
 const navLines = computed(() => fold(live.navs, (a, b) =>
@@ -385,12 +392,6 @@ watch(() => live.recordedFlow, (f) => {
                @keyup.enter="open">
         <Btn :busy="!!opening" busy-label="Opening…" @click="open">Open</Btn>
         <Btn variant="ghost" @click="live.send({ t: 'inspect' })">Re-scan</Btn>
-        <span class="flex overflow-hidden rounded-full border border-hairline">
-          <button class="px-3 py-2 text-[13px] hover:bg-ink/5" title="Scroll to the top of the page"
-                  @click="scrollTo('top')">↑ Top</button>
-          <button class="border-l border-hairline px-3 py-2 text-[13px] hover:bg-ink/5"
-                  title="Scroll to the bottom of the page" @click="scrollTo('bottom')">↓ Bottom</button>
-        </span>
         <button v-if="!live.recording" class="rounded-full border border-critical/40 px-4 py-2 text-[13px] text-critical"
                 :disabled="live.running" @click="record">● Record</button>
         <button v-else class="rounded-full bg-critical px-4 py-2 text-[13px] font-medium text-white" @click="stop">■ Stop</button>
@@ -447,6 +448,41 @@ watch(() => live.recordedFlow, (f) => {
           <button class="underline hover:text-ink" @click="script = ''; loaded = null; picked = ''">clear</button>
         </p>
         <FlowBox v-model="script" :rows="10" class="mt-3" />
+      </section>
+
+      <!-- The console of the page you are driving, not of this one. It sits
+           under the script because that is where you are when a step fails and
+           you want to know what the app itself said about it. Folded away by
+           default: an app that logs on every render would otherwise be the
+           whole screen. -->
+      <section class="card mt-4 p-5">
+        <div class="flex flex-wrap items-center gap-3">
+          <h2 class="text-[15px] font-medium">Browser console</h2>
+          <span class="text-[13px] text-ink-3">What the page you are driving printed.</span>
+          <span v-if="consoleErrors" class="rounded-full bg-critical/10 px-2 py-0.5 text-[12px] font-medium text-critical">
+            {{ consoleErrors }} error{{ consoleErrors === 1 ? '' : 's' }}
+          </span>
+          <button class="ml-auto rounded-full border border-hairline px-3.5 py-1.5 text-[13px] hover:border-ink/25"
+                  @click="live.showConsole = !live.showConsole">
+            {{ live.showConsole ? 'Hide' : 'Show' }}
+            <span class="text-ink-3">{{ consoleLines.length }}</span>
+          </button>
+          <button v-if="live.showConsole && live.console.length"
+                  class="text-[12.5px] text-ink-3 underline hover:text-ink" @click="live.console = []">clear</button>
+        </div>
+
+        <ul v-if="live.showConsole" class="mt-3 max-h-72 space-y-1 overflow-y-auto font-mono text-[11.5px]">
+          <li v-for="l in consoleLines" :key="l.id" class="flex gap-2"
+              :class="{ error: 'text-critical', warn: 'text-warn', debug: 'text-ink-3' }[l.level] ?? 'text-ink-2'">
+            <span class="w-11 shrink-0 text-right text-ink-3">{{ l.level }}</span>
+            <span class="min-w-0 grow whitespace-pre-wrap break-words">{{ l.text }}</span>
+            <span v-if="l.n > 1" class="shrink-0 rounded bg-ink/[0.07] px-1.5 text-[10.5px] text-ink-2"
+                  :title="`printed ${l.n} times in a row`">×{{ l.n }}</span>
+          </li>
+          <li v-if="!consoleLines.length" class="text-ink-3">
+            Nothing printed yet. Anything the page logs — including an uncaught error — lands here.
+          </li>
+        </ul>
       </section>
     </div>
 
