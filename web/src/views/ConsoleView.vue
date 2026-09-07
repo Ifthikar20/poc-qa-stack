@@ -84,7 +84,9 @@ onMounted(async () => {
   if (route.query.url) {
     urlBox.value = route.query.url;
     if (!sameUrl(live.url, route.query.url)) open();
-  } else if (live.url) {
+  } else if (live.url && live.url !== 'about:blank') {
+    // Not `about:blank`: it is truthy, so the box used to pre-fill with it and
+    // pressing Open answered "Only http and https can be driven, not about:".
     urlBox.value = live.url;
   }
 });
@@ -98,9 +100,18 @@ onBeforeUnmount(() => live.detachCanvas());
  * server.
  */
 const waiting = computed(() => {
-  if (live.painted) return null;
   if (!live.connected) return { title: 'Connecting to the runner', body: 'The server drives the browser you are about to see. Reconnecting…' };
   if (opening.value) return { title: `Opening ${opening.value}`, body: 'Loading the page in the runner\u2019s browser.' };
+  /**
+   * Nothing open is checked BEFORE `painted`, because `about:blank` paints — a
+   * blank white frame is still a frame, so the runner reports itself painted
+   * and this state would never be reached. A white rectangle with no
+   * explanation is only marginally better than the black one it replaced.
+   */
+  if (!live.url || live.url === 'about:blank') {
+    return { title: 'Nothing open yet', body: 'Paste a URL above and press Open, or run a suite — the runner shows whatever it is driving.' };
+  }
+  if (live.painted) return null;
   return { title: 'Waiting for the first frame', body: 'The runner streams a frame whenever the page changes. If it is sitting still this can take a moment.' };
 });
 
@@ -367,7 +378,10 @@ watch(() => live.recordedFlow, (f) => {
         <!-- The arrow is drawn here, not in the page. It is the same (x,y) the
              server dispatched, so what you see is where the click landed. -->
         <svg class="pointer-events-none absolute left-0 top-0 size-6 drop-shadow" :style="cursorStyle" viewBox="0 0 24 24">
-          <path d="M5 2l14 9-6 1.2L10.2 20z" fill="#fff" stroke="#0f1729" stroke-width="1.4" stroke-linejoin="round" />
+          <!-- Accent fill, white outline: the page underneath can be any colour,
+               and an arrow that disappears over a dark hero is worse than none. -->
+          <path d="M5 2l14 9-6 1.2L10.2 20z" fill="var(--color-brand)" stroke="#fff"
+                stroke-width="1.6" stroke-linejoin="round" />
         </svg>
 
         <!-- Never a bare black rectangle: it is indistinguishable from a crash. -->
@@ -387,7 +401,8 @@ watch(() => live.recordedFlow, (f) => {
       </div>
 
       <div class="mt-3 flex flex-wrap items-center gap-2">
-        <input v-model="urlBox" spellcheck="false" placeholder="localhost:3000/demo.html"
+        <input v-model="urlBox" spellcheck="false" aria-label="URL to open"
+               placeholder="staging.acme.com/dashboard"
                class="min-w-0 flex-1 rounded-full border border-hairline bg-panel px-4 py-2 text-[13.5px] outline-none focus:border-ink/25"
                @keyup.enter="open">
         <Btn :busy="!!opening" busy-label="Opening…" @click="open">Open</Btn>
@@ -561,7 +576,9 @@ watch(() => live.recordedFlow, (f) => {
           <h2 class="text-[15px] font-medium">On this page</h2>
           <span class="ml-auto text-[12.5px] text-ink-3">{{ live.targets.length }}</span>
         </div>
-        <p class="mt-1 truncate font-mono text-[11.5px] text-ink-3">{{ live.url }}</p>
+        <p class="mt-1 truncate font-mono text-[11.5px] text-ink-3">
+          {{ live.url && live.url !== 'about:blank' ? live.url : 'nothing open' }}
+        </p>
 
         <div v-for="g in groups" :key="g.role" class="mt-3">
           <p class="eyebrow mb-1.5">{{ plural(g.items.length, g.role) }}</p>
