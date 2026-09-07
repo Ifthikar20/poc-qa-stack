@@ -30,9 +30,16 @@ repository root rebuilds it when a source file is newer.
 |---|---|
 | `GC_API` | `npm run dev` against a backend that is not on :3000 |
 | `VITE_API_URL` | the **built** app is hosted somewhere the backend is not |
+| `VITE_AUTH_URL` | there is a control plane to sign in to (`../auth/`) |
 
-Neither is needed in the normal case, where the backend serves this app and
-"the API" is the page's own origin. `src/config.js` is the one place that
+None is needed in the normal case, where the backend serves this app, "the API"
+is the page's own origin, and there is no login at all.
+
+`VITE_AUTH_URL` is the switch for the whole session layer. Unset, `stores/session.js`
+does nothing, `token()` returns null, no header is attached and `/login` is
+unreachable. Set, the router will not render anything until it knows who you
+are, and the runner it talks to must be started with the matching
+`GC_AUTH_SECRET`. `src/config.js` is the one place that
 decides, and every request goes through it — see `src/api.js` (HTTP) and
 `src/stores/live.js` (the screencast socket).
 
@@ -46,12 +53,13 @@ Cross-origin also needs the backend told which origin may call it
 src/
   main.js        app + router + pinia
   router.js      routes; every view is lazy except the console
-  config.js      where the backend is
+  config.js      where the backend and the control plane are
   api.js         the HTTP surface, one function per endpoint
   app.css        Tailwind v4 + the design tokens (brand, ink, surfaces)
   stores/
     live.js      the one WebSocket: frames, cursor, steps, console, navs
     suites.js    suites and cases, cached
+    session.js   who you are, and the short-lived token the runner takes
   views/         one per route
   components/    the small shared pieces
   lang/          a CHECKED COPY of the backend's vocabulary.js — do not edit

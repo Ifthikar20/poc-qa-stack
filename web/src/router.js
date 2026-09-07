@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { useSession } from '@/stores/session';
 
 /**
  * Routes mirror the sidebar, and every one of them is linkable — a suite page
@@ -24,11 +25,35 @@ const routes = [
   { path: '/defects', name: 'defects', component: () => import('@/views/DefectsView.vue') },
   { path: '/console', name: 'console', component: () => import('@/views/ConsoleView.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
+  { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { open: true } },
   { path: '/:rest(.*)', redirect: '/suites' },
 ];
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory('/app/'),
   routes,
   scrollBehavior: () => ({ top: 0 }),
 });
+
+/**
+ * Nothing renders until we know who you are.
+ *
+ * `boot()` resolves once and is cheap afterwards, but the await matters on a
+ * cold load: without it the first navigation decides against `user === null`
+ * before /auth/me has answered, so a signed-in person sees the login form
+ * flash and then get replaced. Waiting once is better than that.
+ *
+ * With no control plane configured, `required` is false and this is a no-op —
+ * the guard never redirects and /login is unreachable.
+ */
+router.beforeEach(async (to) => {
+  const session = useSession();
+  if (!session.ready) await session.boot();
+  if (!session.required) return to.name === 'login' ? '/suites' : true;
+  if (session.signedIn) return to.name === 'login' ? '/suites' : true;
+  if (to.meta.open) return true;
+  // Remember where they were going; the form sends them back after.
+  return { name: 'login', query: to.fullPath === '/suites' ? {} : { next: to.fullPath } };
+});
+
+export default router;

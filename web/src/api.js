@@ -16,16 +16,29 @@
  * API rather than a missing one.
  */
 import { apiUrl } from '@/config';
+import { useSession } from '@/stores/session';
 
 async function req(path, { method = 'GET', body } = {}) {
+  // null whenever there is no control plane, and then no header is sent and
+  // the runner — also unauthenticated — does not ask for one.
+  const token = await useSession().executorToken().catch(() => null);
+
   const res = await fetch(apiUrl(path), {
     method,
-    headers: body ? { 'content-type': 'application/json' } : undefined,
+    headers: {
+      ...(body ? { 'content-type': 'application/json' } : {}),
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   let data = {};
   try { data = await res.json(); } catch { /* 204, or a proxy in the way */ }
   if (!res.ok) {
+    // A 401 from the RUNNER means the token is spent, not that the person is
+    // signed out — their Django session may be perfectly good. Dropping the
+    // cached token makes the next call mint a fresh one instead of retrying a
+    // dead one until someone reloads the page.
+    if (res.status === 401) useSession().forgetToken();
     const err = new Error(data.error || `${method} ${path} failed (${res.status})`);
     err.status = res.status;
     if (data.needsOrigin) err.needsOrigin = data.needsOrigin;

@@ -18,12 +18,26 @@
  * origin it would keep dialling the static host forever, reconnecting on a
  * 1200ms timer, with the console showing "connecting" and no reason why.
  */
-const RAW = (import.meta.env?.VITE_API_URL ?? '').trim().replace(/\/+$/, '');
+const clean = (v) => String(v ?? '').trim().replace(/\/+$/, '');
 
 /** '' when the backend serves this app — the case that needs no configuration. */
-export const API_BASE = RAW;
+export const API_BASE = clean(import.meta.env?.VITE_API_URL);
+
+/**
+ * The control plane: Django, which owns logins and nothing else.
+ *
+ * Empty is a real and supported answer — it means nobody has stood one up, and
+ * the app runs open against a runner that is also unauthenticated. That is the
+ * shape of a laptop PoC and it should not require a second service to try. The
+ * moment this is set, the login screen appears and every call carries a token.
+ */
+export const AUTH_BASE = clean(import.meta.env?.VITE_AUTH_URL);
+
+/** Is there anyone to sign in to? */
+export const hasAuth = () => AUTH_BASE !== '';
 
 export const apiUrl = (path) => `${API_BASE}${path}`;
+export const authUrl = (path) => `${AUTH_BASE}${path}`;
 
 /**
  * ws:// for http://, wss:// for https:// — and wss for a relative base only

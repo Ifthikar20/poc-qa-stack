@@ -13,14 +13,22 @@
  * rather than as twelve competing badges.
  */
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useSuites } from '@/stores/suites';
 import { useLive } from '@/stores/live';
+import { useSession } from '@/stores/session';
 import { api } from '@/api';
 
 const route = useRoute();
+const router = useRouter();
 const suites = useSuites();
 const live = useLive();
+const session = useSession();
+
+async function signOut() {
+  await session.logout();
+  router.replace({ name: 'login' });
+}
 
 const openId = computed(() => route.params.id ?? null);
 
@@ -149,6 +157,21 @@ const ICONS = {
         Origins &amp; vault
       </RouterLink>
     </nav>
+
+    <!-- Signing in with no way to sign out is a half-built feature, and on a
+         shared machine it is the half that matters. Hidden entirely when no
+         control plane is configured, so the laptop case gains no dead UI. -->
+    <div v-if="session.required && session.user"
+         class="mx-3 mt-3 flex items-center gap-2 rounded-xl border border-hairline bg-ground px-3 py-2.5">
+      <span class="grid size-7 shrink-0 place-items-center rounded-full bg-brand-50 text-[11.5px] font-medium text-brand-2">
+        {{ (session.user.name || session.user.email).slice(0, 1).toUpperCase() }}
+      </span>
+      <span class="min-w-0 grow truncate text-[12px] text-ink-2" :title="session.user.email">
+        {{ session.user.name || session.user.email }}
+      </span>
+      <button class="shrink-0 rounded-lg px-2 py-1 text-[12px] text-ink-3 hover:bg-ink/[0.05] hover:text-ink"
+              @click="signOut">Sign out</button>
+    </div>
 
     <div class="m-3 rounded-xl border border-hairline bg-ground p-3 text-[12px] leading-relaxed text-ink-2">
       <p class="font-medium text-ink">Suites are project data</p>
