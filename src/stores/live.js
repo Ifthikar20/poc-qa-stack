@@ -20,6 +20,7 @@
  */
 import { defineStore } from 'pinia';
 import { wsUrl } from '@/config';
+import { useSession } from '@/stores/session';
 
 const MAX_LOG = 200;
 
@@ -57,13 +58,36 @@ export const useLive = defineStore('live', {
   },
 
   actions: {
-    connect() {
+    /**
+     * Open the socket, with a token if there is a control plane.
+     *
+     * Async, and fetched EVERY time rather than once at startup. Tokens last
+     * ten minutes and this reconnects on a 1200ms timer forever; reusing the
+     * one we first opened with would work all morning and then, after a lunch
+     * break or a server restart, reconnect with an expired token and be
+     * refused on every retry — a console stuck on "connecting" with nothing in
+     * it saying why.
+     */
+    async connect() {
       if (this.ws && this.ws.readyState <= 1) return;
-      const ws = new WebSocket(wsUrl('/ws'));
+
+      let token = null;
+      try { token = await useSession().executorToken(); }
+      catch { /* signed out or the control plane is down; try unauthenticated and let the 401 say so */ }
+
+      // Re-check: awaiting above yields, and a second caller may have opened
+      // one in the meantime. Two sockets means two screencast subscribers.
+      if (this.ws && this.ws.readyState <= 1) return;
+
+      // A header would be better, but `new WebSocket()` has nowhere to put one.
+      // That is why the control plane keeps these short.
+      const ws = new WebSocket(wsUrl('/ws') + (token ? `?t=${encodeURIComponent(token)}` : ''));
       ws.binaryType = 'blob';
       this.ws = ws;
 
+      let opened = false;
       ws.onopen = () => {
+        opened = true;
         this.connected = true;
         // A reconnect starts with no picture, and the page may be idle.
         this.send({ t: 'frame.request' });
@@ -72,6 +96,11 @@ export const useLive = defineStore('live', {
         this.connected = false;
         // We no longer know what the executor is doing; `ready` will say.
         this.running = false;
+        // Only when the upgrade was REFUSED — a socket that opened and later
+        // dropped is a restarted runner, not a bad token. Forgetting on every
+        // close would mint a new token against the control plane every 1200ms
+        // for as long as the runner is down.
+        if (!opened) useSession().forgetToken();
         // The server restarts often while you are working on it. Reconnecting
         // quietly beats a page that looks broken until you reload it.
         setTimeout(() => this.connect(), 1200);
