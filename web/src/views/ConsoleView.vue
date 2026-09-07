@@ -200,6 +200,57 @@ const record = () => live.send({ t: 'record.start' });
 const stop = () => live.send({ t: 'record.stop' });
 const useRecording = () => { script.value = live.recordedFlow; autofilled = live.recordedFlow; loaded.value = null; };
 
+/**
+ * What is on the page, summarised rather than tipped out.
+ *
+ * A marketing page has thirty-odd links and three things you would actually
+ * drive, and listing all of them flat buries the three. So: grouped by role,
+ * the things you type into and press first, links last — and any group past a
+ * handful keeps a handful and offers the rest.
+ */
+const ROLE_ORDER = ['textbox', 'searchbox', 'combobox', 'checkbox', 'radio',
+                    'button', 'tab', 'menuitem', 'link'];
+const PER_GROUP = 6;
+const openRoles = ref(new Set());
+const toggleRole = (r) => { openRoles.value.has(r) ? openRoles.value.delete(r) : openRoles.value.add(r); };
+const shown = (g) => (openRoles.value.has(g.role) ? g.items : g.items.slice(0, PER_GROUP));
+
+const groups = computed(() => {
+  const by = new Map();
+  for (const t of live.targets) {
+    if (!by.has(t.role)) by.set(t.role, []);
+    by.get(t.role).push(t);
+  }
+  const rank = (r) => (ROLE_ORDER.indexOf(r) < 0 ? ROLE_ORDER.length : ROLE_ORDER.indexOf(r));
+  return [...by.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+    .map(([role, items]) => ({ role, items }));
+});
+
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : /(?:[sx]|ch|sh)$/.test(w) ? 'es' : 's'}`;
+
+/**
+ * Consecutive identical lines, folded into one with a count.
+ *
+ * A step that retries five times said the same sentence five times, which is
+ * five times harder to read than the one line it deserved — and pushed the
+ * thing that actually went wrong off the top.
+ */
+const fold = (rows, same) => {
+  const out = [];
+  for (const r of rows) {
+    const last = out.at(-1);
+    if (last && same(last, r)) { last.n += 1; continue; }
+    out.push({ ...r, n: 1 });
+  }
+  return out;
+};
+const logLines = computed(() => fold(live.log, (a, b) => a.msg === b.msg && a.level === b.level));
+
+/** Reopening the same page four times is one fact, not four. */
+const navLines = computed(() => fold(live.navs, (a, b) =>
+  a.url === b.url && a.status === b.status && a.redirects === b.redirects));
+
 async function loadCases() {
   try { cases.value = (await api.cases()).cases; } catch { cases.value = []; }
 }
@@ -401,6 +452,21 @@ watch(() => live.recordedFlow, (f) => {
 
     <!-- rail --------------------------------------------------------- -->
     <div class="grid content-start gap-4">
+      <!-- First in the rail. It is where anything that went wrong says so, and
+           it should not be below a list of everything that did not. -->
+      <section class="card p-5">
+        <h2 class="text-[15px] font-medium">Log</h2>
+        <ul class="mt-3 max-h-64 space-y-1 overflow-y-auto font-mono text-[11.5px]">
+          <li v-for="l in logLines" :key="l.id" class="flex gap-2"
+              :class="{ error: 'text-critical', warn: 'text-warn' }[l.level] ?? 'text-ink-2'">
+            <span class="min-w-0 grow">{{ l.msg }}</span>
+            <span v-if="l.n > 1" class="shrink-0 rounded bg-ink/[0.07] px-1.5 text-[10.5px] text-ink-2"
+                  :title="`said ${l.n} times in a row`">×{{ l.n }}</span>
+          </li>
+          <li v-if="!logLines.length" class="text-ink-3">Nothing yet.</li>
+        </ul>
+      </section>
+
       <section v-if="live.recording || live.recordedCount" class="card p-5">
         <div class="flex items-center gap-2">
           <h2 class="text-[15px] font-medium">Recording</h2>
@@ -460,26 +526,40 @@ watch(() => live.recordedFlow, (f) => {
           <span class="ml-auto text-[12.5px] text-ink-3">{{ live.targets.length }}</span>
         </div>
         <p class="mt-1 truncate font-mono text-[11.5px] text-ink-3">{{ live.url }}</p>
-        <div class="mt-3 flex flex-wrap gap-1.5">
-          <button v-for="t in live.targets" :key="t.target"
-                  class="rounded-full border border-hairline px-2.5 py-1 text-[12px] hover:border-ink/30"
-                  :title="`Insert ${t.target}`"
-                  @click="script += `${script && !script.endsWith('\n') ? '\n' : ''}click ${t.target}\n`">
-            {{ t.name }} <span class="text-ink-3">· {{ t.role }}</span>
-          </button>
+
+        <div v-for="g in groups" :key="g.role" class="mt-3">
+          <p class="eyebrow mb-1.5">{{ plural(g.items.length, g.role) }}</p>
+          <div class="flex flex-wrap gap-1.5">
+            <!-- The role is the group's heading, so the chip is just the name —
+                 which is what you are scanning for. -->
+            <button v-for="t in shown(g)" :key="t.target"
+                    class="max-w-[13rem] truncate rounded-full border border-hairline px-2.5 py-1 text-[12px]
+                           hover:border-ink/30"
+                    :title="`Insert ${t.target}`"
+                    @click="script += `${script && !script.endsWith('\n') ? '\n' : ''}click ${t.target}\n`">
+              {{ t.name }}
+            </button>
+            <button v-if="g.items.length > PER_GROUP" @click="toggleRole(g.role)"
+                    class="rounded-full px-2.5 py-1 text-[12px] text-brand-2 hover:bg-brand-50">
+              {{ openRoles.has(g.role) ? 'Show fewer' : `+${g.items.length - PER_GROUP} more` }}
+            </button>
+          </div>
         </div>
+        <p v-if="!live.targets.length" class="mt-3 text-[12.5px] text-ink-3">
+          Nothing interactive found here yet.
+        </p>
       </section>
 
       <!-- Where each navigation actually went. The final URL says nothing about
            a 301 through a dead path, a detour via a tracker, or a friendly 404
            — and none of those is visible anywhere else. -->
-      <section v-if="live.navs.length" class="card p-5">
+      <section v-if="navLines.length" class="card p-5">
         <div class="flex items-baseline gap-2">
           <h2 class="text-[15px] font-medium">Where it went</h2>
           <span class="ml-auto text-[12.5px] text-ink-3">{{ live.navs.length }}</span>
         </div>
         <ul class="mt-3 max-h-72 space-y-2.5 overflow-y-auto">
-          <li v-for="n in live.navs" :key="n.id" class="border-b border-hairline pb-2.5 last:border-0 last:pb-0">
+          <li v-for="n in navLines" :key="n.id" class="border-b border-hairline pb-2.5 last:border-0 last:pb-0">
             <p class="flex items-center gap-2 text-[12.5px]">
               <span class="rounded px-1.5 py-0.5 font-mono text-[11px] font-medium"
                     :class="n.status >= 400 ? 'bg-critical/10 text-critical'
@@ -488,6 +568,8 @@ watch(() => live.recordedFlow, (f) => {
                 {{ n.redirects }} redirect{{ n.redirects === 1 ? '' : 's' }}
               </span>
               <span v-if="n.leftOrigin" class="text-critical">left the origin</span>
+              <span v-if="n.n > 1" class="ml-auto shrink-0 rounded bg-ink/[0.07] px-1.5 text-[11px] text-ink-2"
+                    :title="`opened ${n.n} times in a row`">×{{ n.n }}</span>
             </p>
             <p class="mt-1 truncate font-mono text-[11px] text-ink-3" :title="n.url">{{ n.url }}</p>
             <ol v-if="n.redirects" class="mt-1.5 space-y-0.5">
@@ -500,15 +582,6 @@ watch(() => live.recordedFlow, (f) => {
         </ul>
       </section>
 
-      <section class="card p-5">
-        <h2 class="text-[15px] font-medium">Log</h2>
-        <ul class="mt-3 max-h-64 space-y-1 overflow-y-auto font-mono text-[11.5px]">
-          <li v-for="l in live.log" :key="l.id" :class="{ error: 'text-critical', warn: 'text-warn' }[l.level] ?? 'text-ink-2'">
-            {{ l.msg }}
-          </li>
-          <li v-if="!live.log.length" class="text-ink-3">Nothing yet.</li>
-        </ul>
-      </section>
     </div>
   </div>
 
