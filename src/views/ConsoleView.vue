@@ -22,8 +22,27 @@ import TopBar from '@/components/TopBar.vue';
 import Field from '@/components/Field.vue';
 import FlowBox from '@/components/FlowBox.vue';
 import Btn from '@/components/Btn.vue';
+import AddressBar from '@/components/AddressBar.vue';
 
 const VIEW = { w: 1180, h: 760 };          // must match the server's viewport
+
+/**
+ * The navigation that produced the address we are showing — or none.
+ *
+ * Matched on the URL rather than just taking the newest chain, because they can
+ * legitimately disagree: a hash change or a pushState navigates without
+ * producing a document, so no chain is recorded for it and the newest one is
+ * still the load that got you to the page. Comparing without the hash keeps
+ * that chain attached where it belongs, and stops a stale one being shown
+ * beside an address it did not produce — which would claim a redirect that
+ * never happened.
+ */
+const withoutHash = (u) => { try { const x = new URL(u); x.hash = ''; return x.href; } catch { return u; } };
+const currentNav = computed(() => {
+  if (!live.url || live.url === 'about:blank') return null;
+  const here = withoutHash(live.url);
+  return live.navs.find((n) => n.url && withoutHash(n.url) === here) ?? null;
+});
 
 const route = useRoute();
 const live = useLive();
@@ -370,7 +389,11 @@ watch(() => live.recordedFlow, (f) => {
   <div class="grid gap-5 px-6 py-6 xl:grid-cols-[minmax(0,1fr)_380px]">
     <!-- stage -------------------------------------------------------- -->
     <div>
-      <div ref="wrap" class="stage relative" style="container-type: size; aspect-ratio: 1180 / 760">
+      <!-- The chrome the canvas does not have. A video of a browser shows you
+           the page and nothing about where it is; this is the address bar. -->
+      <AddressBar :url="live.url" :nav="currentNav" />
+
+      <div ref="wrap" class="stage relative rounded-t-none" style="container-type: size; aspect-ratio: 1180 / 760">
         <canvas ref="canvas" :width="VIEW.w" :height="VIEW.h" tabindex="0"
                 class="block h-full w-full cursor-none"
                 aria-label="The page being driven — click, type and scroll here to demonstrate"
