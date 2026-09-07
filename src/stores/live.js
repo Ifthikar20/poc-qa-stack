@@ -19,6 +19,7 @@
  * frame that was never coming.
  */
 import { defineStore } from 'pinia';
+import { wsUrl } from '@/config';
 
 const MAX_LOG = 200;
 
@@ -58,8 +59,7 @@ export const useLive = defineStore('live', {
   actions: {
     connect() {
       if (this.ws && this.ws.readyState <= 1) return;
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const ws = new WebSocket(`${proto}://${location.host}/ws`);
+      const ws = new WebSocket(wsUrl('/ws'));
       ws.binaryType = 'blob';
       this.ws = ws;
 
