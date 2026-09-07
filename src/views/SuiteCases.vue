@@ -63,7 +63,7 @@ async function runOne(c) {
   await router.push({ path: '/console', query: { suite: id } });
   await nextTick();
   try {
-    const r = await api.runSuite(id, c.id);
+    const r = await api.runSuite(id, c.id, live.paceMs);
     if (!r.outcomes[0]?.ok) live.say(`${c.name}: ${r.outcomes[0]?.error ?? 'failed'}`, 'error');
   } catch (e) {
     if (e.needsOrigin) live.needsOrigin = { origin: e.needsOrigin };
