@@ -47,12 +47,33 @@ async function req(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+/**
+ * A binary body, with the same token the JSON calls use.
+ *
+ * An `<img src>` cannot carry an Authorization header, so a gated image has to
+ * be fetched and turned into a blob URL — the same thing ConsoleView does with
+ * screencast frames. Returns null rather than throwing: a missing icon is the
+ * normal case, not an error worth a red box.
+ */
+async function bytes(path) {
+  const token = await useSession().executorToken().catch(() => null);
+  try {
+    const res = await fetch(apiUrl(path), {
+      headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    });
+    if (res.status === 401) useSession().forgetToken();
+    if (!res.ok) return null;
+    return await res.blob();
+  } catch { return null; }
+}
+
 export const api = {
   state:   () => req('/api/state'),
   version: () => req('/api/version'),
   runs:    (suite) => req(`/api/runs${suite ? `?suite=${encodeURIComponent(suite)}` : ''}`),
   defects: () => req('/api/defects'),
   hero:    () => req('/api/hero'),
+  siteIcon: (origin) => bytes(`/api/sites/icon?origin=${encodeURIComponent(origin)}`),
 
   origins:      () => req('/api/origins'),
   allowOrigin:  (origin) => req('/api/origins', { method: 'POST', body: { origin } }),

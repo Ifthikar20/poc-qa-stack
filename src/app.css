@@ -122,6 +122,22 @@ button:disabled { cursor: not-allowed; }
   font-size: 13px;
   color: var(--color-ink-2);
 }
+/**
+ * The same row, collapsed to a 64px rail.
+ *
+ * A sibling utility rather than a set of overrides on nav-item: that one
+ * hard-codes `gap` and horizontal padding, and winning against them from the
+ * element would mean either !important or relying on stylesheet order — which
+ * is exactly how the sub-nav's selected item came out grey once already.
+ */
+@utility nav-item-rail {
+  position: relative;
+  justify-content: center;
+  gap: 0;
+  padding-inline: 0;
+  padding-block: 0.5rem;
+}
+
 @utility nav-item-on {
   background: var(--color-brand-50);
   color: var(--color-brand-2);
