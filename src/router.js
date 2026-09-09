@@ -26,6 +26,9 @@ const routes = [
   { path: '/console', name: 'console', component: () => import('@/views/ConsoleView.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
   { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { open: true } },
+  // Where a 403 mfa_required sends you: the account has to enrol an
+  // authenticator before the control plane lets it do anything else.
+  { path: '/security/mfa', name: 'security-mfa', component: () => import('@/views/SecurityMfaView.vue') },
   { path: '/:rest(.*)', redirect: '/suites' },
 ];
 

@@ -19,10 +19,19 @@
  * frame that was never coming.
  */
 import { defineStore } from 'pinia';
-import { wsUrl } from '@/config';
+import { hasAuth, wsUrl } from '@/config';
+import { api } from '@/api';
 import { useSession } from '@/stores/session';
 
 const MAX_LOG = 200;
+/**
+ * Reconnect timing. Fast at first — the server restarts often while you are
+ * working on it — and doubling up to thirty seconds, so a runner that is down
+ * for lunch is asked once every half minute rather than fifty times a minute,
+ * each of which would mint a token and buy a ticket [session-4].
+ */
+const RECONNECT_MIN_MS = 1200;
+const RECONNECT_MAX_MS = 30_000;
 
 export const useLive = defineStore('live', {
   state: () => ({
@@ -63,6 +72,9 @@ export const useLive = defineStore('live', {
     onFrame: null,      // set by the console view while it is mounted
     lastFrame: null,    // held for whoever attaches next
     painted: false,     // has a canvas actually drawn one?
+    backoff: RECONNECT_MIN_MS,   // the next reconnect delay; reset on a clean open
+    reconnectTimer: null,
+    wanted: false,      // did someone ask for a socket? off after disconnect()
   }),
 
   getters: {
@@ -77,29 +89,46 @@ export const useLive = defineStore('live', {
 
   actions: {
     /**
-     * Open the socket, with a token if there is a control plane.
+     * Open the socket — with a ticket, if there is a control plane.
      *
-     * Async, and fetched EVERY time rather than once at startup. Tokens last
-     * ten minutes and this reconnects on a 1200ms timer forever; reusing the
-     * one we first opened with would work all morning and then, after a lunch
-     * break or a server restart, reconnect with an expired token and be
-     * refused on every retry — a console stuck on "connecting" with nothing in
-     * it saying why.
+     * A browser cannot set headers on a WebSocket, so whatever proves who is
+     * connecting has to ride in the URL, and a URL is what logs and history
+     * keep. So the TOKEN never goes there. It buys a ticket over a Bearer
+     * header instead — thirty seconds, one use, bound to the token's claims —
+     * and the ticket is what opens the socket (docs/AUTH.md §9). A `?t=` in
+     * the socket URL is refused by the runner, on purpose.
+     *
+     * Async, and done EVERY time rather than once at startup: the ticket is
+     * single-use, the token behind it lasts ten minutes, and the runner closes
+     * the socket when that token expires — so each reconnect is a fresh ticket
+     * from a fresh-enough token, and a console after a lunch break comes back
+     * rather than sitting on "connecting" with nothing saying why.
      */
     async connect() {
+      this.wanted = true;
+      if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
       if (this.ws && this.ws.readyState <= 1) return;
 
-      let token = null;
-      try { token = await useSession().executorToken(); }
-      catch { /* signed out or the control plane is down; try unauthenticated and let the 401 say so */ }
+      let ticket = null;
+      if (hasAuth()) {
+        try { ticket = (await api.socketTicket()).ticket; }
+        catch (err) {
+          // Signed out, the control plane is down, or the token was refused.
+          // A terminal 401 from the control plane has already routed to the
+          // login page by now (session.js); anything else is worth another
+          // try later, and nothing is gained by opening a socket that the
+          // runner will only refuse.
+          if (this.wanted && useSession().signedIn) this.scheduleReconnect();
+          return;
+        }
+      }
 
       // Re-check: awaiting above yields, and a second caller may have opened
       // one in the meantime. Two sockets means two screencast subscribers.
+      if (!this.wanted) return;
       if (this.ws && this.ws.readyState <= 1) return;
 
-      // A header would be better, but `new WebSocket()` has nowhere to put one.
-      // That is why the control plane keeps these short.
-      const ws = new WebSocket(wsUrl('/ws') + (token ? `?t=${encodeURIComponent(token)}` : ''));
+      const ws = new WebSocket(wsUrl('/ws') + (ticket ? `?ticket=${encodeURIComponent(ticket)}` : ''));
       ws.binaryType = 'blob';
       this.ws = ws;
 
@@ -107,21 +136,29 @@ export const useLive = defineStore('live', {
       ws.onopen = () => {
         opened = true;
         this.connected = true;
+        this.backoff = RECONNECT_MIN_MS;    // a clean open earns a fast retry next time
         // A reconnect starts with no picture, and the page may be idle.
         this.send({ t: 'frame.request' });
       };
-      ws.onclose = () => {
+      ws.onclose = (e) => {
         this.connected = false;
         // We no longer know what the executor is doing; `ready` will say.
         this.running = false;
+        if (this.ws === ws) this.ws = null;
+        // 4401 is the runner closing the socket because the token that
+        // bought its ticket has expired. The token is spent; forget it so
+        // the next ticket is bought with a fresh one, and reconnect at once
+        // rather than backing off — nothing is wrong, it is the clock.
+        if (e?.code === 4401) { useSession().forgetToken(); this.backoff = RECONNECT_MIN_MS; }
         // Only when the upgrade was REFUSED — a socket that opened and later
         // dropped is a restarted runner, not a bad token. Forgetting on every
-        // close would mint a new token against the control plane every 1200ms
-        // for as long as the runner is down.
-        if (!opened) useSession().forgetToken();
+        // close would mint a new token against the control plane on every
+        // retry for as long as the runner is down.
+        else if (!opened) useSession().forgetToken();
         // The server restarts often while you are working on it. Reconnecting
-        // quietly beats a page that looks broken until you reload it.
-        setTimeout(() => this.connect(), 1200);
+        // quietly beats a page that looks broken until you reload it — unless
+        // disconnect() said not to, which is sign-out.
+        if (this.wanted) this.scheduleReconnect();
       };
       ws.onmessage = (e) => {
         if (typeof e.data !== 'string') {
@@ -131,6 +168,33 @@ export const useLive = defineStore('live', {
         let ev; try { ev = JSON.parse(e.data); } catch { return; }
         this.handle(ev);
       };
+    },
+
+    scheduleReconnect() {
+      if (this.reconnectTimer) return;
+      const delay = this.backoff;
+      this.backoff = Math.min(this.backoff * 2, RECONNECT_MAX_MS);
+      this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.connect(); }, delay);
+    },
+
+    /**
+     * Close the socket and stop reconnecting: sign-out, and the moment before
+     * a new sign-in. The runner drops a socket that says goodbye at once
+     * rather than leaving it to time out, so the next person to sign in on
+     * this page is not still attached as the previous one [session-3].
+     */
+    disconnect() {
+      this.wanted = false;
+      if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+      this.backoff = RECONNECT_MIN_MS;
+      const ws = this.ws;
+      this.ws = null;
+      if (ws && ws.readyState <= 1) {
+        try { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'bye' })); } catch { /* already going */ }
+        try { ws.close(1000, 'bye'); } catch { /* already gone */ }
+      }
+      this.connected = false;
+      this.running = false;
     },
 
     send(msg) {
@@ -183,6 +247,12 @@ export const useLive = defineStore('live', {
         case 'diagram': this.diagram = ev.mermaid; break;
         case 'needs.origin':
           this.needsOrigin = { origin: ev.origin, url: ev.url, redirected: ev.redirected };
+          break;
+        // The runner said no to something this socket asked for. The reason
+        // arrives as a log line too; this is for a view that wants to offer
+        // the remedy — sign in again — rather than only show the sentence.
+        case 'refused':
+          if (ev.error === 'step_up_required') this.say('Allowing an origin needs a recent sign-in — sign in again, then retry', 'error');
           break;
         // The driven page's own console. Capped like the log — a page in a
         // render loop can print faster than anyone can read.

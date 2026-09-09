@@ -7,18 +7,28 @@
  *                      ever sees it; the browser attaches it because every
  *                      request below sets credentials: 'include'.
  *   an executor token  between this app and the runner. Short-lived, held in
- *                      memory, sent as a Bearer header and — for the socket,
- *                      which cannot carry headers — in a query string.
+ *                      memory, sent as a Bearer header — and never in a URL.
+ *                      The socket, which cannot carry headers, is opened with
+ *                      a thirty-second ticket bought with the token instead
+ *                      (stores/live.js).
  *
  * The runner is never given the session cookie. It is a different service on a
  * different origin, and a cookie that opens the control plane should not also
- * be sitting in a WebSocket URL.
+ * be sitting anywhere near a WebSocket.
  *
  * When VITE_AUTH_URL is unset there is no control plane, `token()` returns null
  * and nothing here does anything. That is the laptop case and it stays working.
  */
 import { defineStore } from 'pinia';
 import { authUrl, hasAuth } from '@/config';
+import { useLive } from '@/stores/live';
+
+/**
+ * Route from inside the store. The router imports this store for its guard,
+ * so importing the router at the top here would be a cycle at module load;
+ * asking for it when it is needed is not.
+ */
+const go = async (to) => (await import('@/router')).default.replace(to);
 
 /**
  * Refresh a token with a minute still on it.
@@ -103,6 +113,11 @@ export const useSession = defineStore('session', {
 
     async login(email, password) {
       this.error = '';
+      // Whoever was attached before is detached BEFORE the new session
+      // exists, so a socket bound to the previous person's token is never
+      // still open under the next one's [session-3].
+      useLive().disconnect();
+      this.forgetToken();
       try {
         const out = await call('/auth/login', { method: 'POST', body: { email, password }, csrf: this.csrf });
         this.become(out);
@@ -116,12 +131,45 @@ export const useSession = defineStore('session', {
     },
 
     async logout() {
+      // The socket first: the runner drops it at once on {t:'bye'}, and the
+      // frames stop before the session does rather than after.
+      useLive().disconnect();
       try {
         const out = await call('/auth/logout', { method: 'POST', csrf: this.csrf });
         if (out.csrfToken) this.csrf = out.csrfToken;
       } catch { /* going anonymous locally is the important half */ }
       this.become(null);
       this.forgetToken();
+    },
+
+    /**
+     * The control plane said the session is over, or is not allowed to do
+     * this yet. Both are decided here, once, because every caller of
+     * executorToken() would otherwise have to know what a 401 from the
+     * control plane means as opposed to one from the runner (docs/AUTH.md §9.8).
+     *
+     *   401            terminal: the session is gone (expired, signed out
+     *                  elsewhere, deactivated). Clear the user, drop the
+     *                  socket, go to the login page. Nothing retries.
+     *   403 mfa_required  the account must enrol an authenticator before it
+     *                  may do anything else; the page for that is the only
+     *                  place to send anyone.
+     */
+    async terminal(err) {
+      if (err.status === 401) {
+        this.become(null);
+        this.forgetToken();
+        useLive().disconnect();
+        await go({ name: 'login' });
+        return true;
+      }
+      if (err.status === 403 && err.message === 'mfa_required') {
+        this.mfa = { ...this.mfa, required: true };
+        useLive().disconnect();
+        await go({ name: 'security-mfa' });
+        return true;
+      }
+      return false;
     },
 
     /**
@@ -160,7 +208,7 @@ export const useSession = defineStore('session', {
           return this.token;
         } catch (err) {
           this.forgetToken();
-          if (err.status === 401) this.become(null);   // the session went away
+          await this.terminal(err);
           throw err;
         } finally { this.pending = null; }
       })();

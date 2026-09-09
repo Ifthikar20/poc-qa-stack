@@ -38,8 +38,9 @@ is the page's own origin, and there is no login at all.
 `VITE_AUTH_URL` is the switch for the whole session layer. Unset, `stores/session.js`
 does nothing, `token()` returns null, no header is attached and `/login` is
 unreachable. Set, the router will not render anything until it knows who you
-are, and the runner it talks to must be started with the matching
-`GC_AUTH_SECRET`. `src/config.js` is the one place that
+are, and the runner it talks to must be started with the public half of the
+control plane's signing key (`GC_AUTH_PUBLIC_KEYS`). `src/config.js` is the one
+place that
 decides, and every request goes through it — see `src/api.js` (HTTP) and
 `src/stores/live.js` (the screencast socket).
 
