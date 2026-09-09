@@ -15,10 +15,15 @@
  * and this page is also where Google sends the browser back: signed in, the
  * router moves on to ?next= or the suites; refused, the callback carries
  * ?error= and the one sentence for every refusal is shown instead of the form.
+ *
+ * A passkey (§5) is a button when the browser has the API: it signs in on
+ * its own and is the second factor, so an enrolled account skips the
+ * challenge page a password would be sent to.
  */
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { safeNext, useSession } from '@/stores/session';
+import { passkeysAvailable } from '@/webauthn';
 import AuthShell from '@/components/AuthShell.vue';
 import Field from '@/components/Field.vue';
 import PasswordField from '@/components/PasswordField.vue';
@@ -54,10 +59,19 @@ async function submit() {
     const outcome = await session.login(email.value, password.value, turnstileToken.value || undefined);
     if (outcome === 'ok') return void router.replace(nextPath());
     if (outcome === 'verify_email') return void router.replace({ name: 'verify', query: nextQuery.value });
-    if (outcome === 'mfa_authenticate') return void router.replace({ name: 'security-mfa' });
+    if (outcome === 'mfa_authenticate') return void router.replace({ name: 'mfa', query: nextQuery.value });
     // A refusal naming Turnstile means this address must solve it now.
     if (session.config.turnstile && /^turnstile_/.test(session.errorCode)) needsTurnstile.value = true;
     widget.value?.reset();
+  } finally { busy.value = false; }
+}
+
+async function passkey() {
+  busy.value = true;
+  try {
+    const outcome = await session.passkeyLogin();
+    if (outcome === 'ok') return void router.replace(nextPath());
+    if (outcome === 'verify_email') return void router.replace({ name: 'verify', query: nextQuery.value });
   } finally { busy.value = false; }
 }
 </script>
@@ -89,11 +103,13 @@ async function submit() {
         Sign in
       </Btn>
 
-      <template v-if="session.config.google">
+      <template v-if="session.config.google || passkeysAvailable()">
         <p class="flex items-center gap-3 text-[11.5px] uppercase tracking-wide text-ink-3">
           <span class="h-px flex-1 bg-hairline" />or<span class="h-px flex-1 bg-hairline" />
         </p>
-        <GoogleButton process="login" :next="safeNext(route.query.next)" />
+        <Btn v-if="passkeysAvailable()" variant="ghost" :busy="busy" busy-label="Waiting for the passkey…"
+             class="w-full justify-center" @click="passkey">Sign in with a passkey</Btn>
+        <GoogleButton v-if="session.config.google" process="login" :next="safeNext(route.query.next)" />
       </template>
     </form>
 

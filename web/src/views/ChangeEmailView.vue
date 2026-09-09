@@ -6,40 +6,40 @@
  * change the owner did not make can be undone from the mailbox they still
  * have.
  *
- * The control plane wants a recent proof of the password before it starts
- * (300 seconds); when the sign-in is older than that it answers with a
- * `reauthenticate` flow and the page asks for the password first.
+ * The control plane wants a recent proof before it starts (300 seconds):
+ * the password for an account with nothing stronger, only the second
+ * factor for one that holds an authenticator (§7.2). Either way the
+ * answer is a reauthentication flow, the sheet proves it, and the change
+ * is tried again.
  */
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSession } from '@/stores/session';
+import { useGuarded } from '@/composables/reauth';
 import AuthShell from '@/components/AuthShell.vue';
 import Field from '@/components/Field.vue';
-import PasswordField from '@/components/PasswordField.vue';
 import Btn from '@/components/Btn.vue';
+import ReauthSheet from '@/components/ReauthSheet.vue';
 
 const session = useSession();
 const router = useRouter();
+const guard = useGuarded();
 
 const email = ref('');
-const password = ref('');
-const needsPassword = ref(false);
 const busy = ref(false);
 
 onMounted(() => { session.error = ''; });
 
-async function submit() {
+async function attempt(run) {
   busy.value = true;
   try {
-    if (needsPassword.value) {
-      if (await session.reauthenticate(password.value) !== 'ok') return;
-      needsPassword.value = false;
-    }
-    const outcome = await session.changeEmail(email.value);
-    if (outcome === 'ok') return void router.replace({ name: 'verify' });
-    if (outcome === 'reauthenticate') needsPassword.value = true;
+    const outcome = await run();
+    if (outcome === 'ok') router.replace({ name: 'verify' });
   } finally { busy.value = false; }
 }
+
+const submit = () => attempt(() => guard.run(() => session.changeEmail(email.value)));
+const proved = () => attempt(() => guard.proved());
 </script>
 
 <template>
@@ -50,16 +50,14 @@ async function submit() {
         <input v-model="email" type="email" autocomplete="email" required autofocus spellcheck="false"
                placeholder="you@company.com">
       </Field>
-      <PasswordField v-if="needsPassword" v-model="password" label="Your password, to confirm it is you"
-                     autocomplete="current-password" />
       <p v-if="session.error" class="rounded-lg bg-critical/10 px-3 py-2 text-[12.5px] text-critical">{{ session.error }}</p>
-      <Btn type="submit" :busy="busy" busy-label="Sending the code…"
-           :disabled="!email || (needsPassword && !password)" class="w-full justify-center">
+      <Btn type="submit" :busy="busy" busy-label="Sending the code…" :disabled="!email" class="w-full justify-center">
         Send a code to the new address
       </Btn>
     </form>
     <template #foot>
       <RouterLink :to="{ name: 'security' }" class="text-brand-2 underline">Back to security</RouterLink>.
     </template>
+    <ReauthSheet v-if="guard.flow.value" :flow="guard.flow.value" @done="proved" @cancel="guard.cancel()" />
   </AuthShell>
 </template>

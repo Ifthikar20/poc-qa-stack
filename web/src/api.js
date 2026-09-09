@@ -48,12 +48,13 @@ async function req(path, { method = 'GET', body } = {}) {
       err.entitlement = { limit: data.limit, plan: data.plan };
       err.message = `Your ${data.plan ?? 'current'} plan does not allow this (${data.limit ?? 'limit reached'})`;
     }
-    // Allowing an origin wants a recent sign-in (docs/AUTH.md §9). The
-    // reauthentication flow that satisfies it is the MFA step's; until then
-    // the words say what to do.
+    // Allowing an origin wants a recent proof of the strongest factor the
+    // account has (docs/AUTH.md §9): the view opens the reauthentication
+    // sheet, forgets the token so the next one carries a fresh `su`, and
+    // retries. The words are for the rare caller with no sheet.
     if (res.status === 403 && data.error === 'step_up_required') {
       err.stepUp = true;
-      err.message = 'Allowing an origin needs a recent sign-in — sign in again, then retry';
+      err.message = 'Allowing an origin needs a recent sign-in — confirm it is you, then retry';
     }
     throw err;
   }

@@ -34,7 +34,7 @@ async function submit() {
   try {
     const outcome = await session.verify(code.value.replace(/\s+/g, ''));
     if (outcome === 'ok') return void router.replace(changing.value ? { name: 'security' } : nextPath());
-    if (outcome === 'mfa_authenticate') return void router.replace({ name: 'security-mfa' });
+    if (outcome === 'mfa_authenticate') return void router.replace({ name: 'mfa', query: safeNext(route.query.next) ? { next: safeNext(route.query.next) } : {} });
     if (outcome === 'anonymous' || session.flow === null) {
       // Three wrong codes, or a reload after the attempt ended: start over.
       if (!changing.value) return void router.replace({ name: 'signup' });

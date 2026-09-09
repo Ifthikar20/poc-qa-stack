@@ -33,6 +33,9 @@ const routes = [
 
   // The account pages (docs/AUTH.md §4, §5, §7).
   { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { open: true, anonymousOnly: true } },
+  // The second factor after a password (docs/AUTH.md §5): open, because
+  // nobody is signed in until the code lands.
+  { path: '/login/mfa', name: 'mfa', component: () => import('@/views/MfaChallengeView.vue'), meta: { open: true, anonymousOnly: true } },
   { path: '/signup', name: 'signup', component: () => import('@/views/SignupView.vue'), meta: { open: true, anonymousOnly: true } },
   { path: '/verify', name: 'verify', component: () => import('@/views/VerifyView.vue'), meta: { open: true } },
   { path: '/forgot-password', name: 'forgot-password', component: () => import('@/views/ForgotPasswordView.vue'), meta: { open: true, anonymousOnly: true } },
@@ -42,8 +45,10 @@ const routes = [
   { path: '/security/password', name: 'security-password', component: () => import('@/views/ChangePasswordView.vue') },
   { path: '/security/email', name: 'security-email', component: () => import('@/views/ChangeEmailView.vue') },
   // Where a 403 mfa_required sends you: the account has to enrol an
-  // authenticator before the control plane lets it do anything else.
+  // authenticator before the control plane lets it do anything else. Also
+  // where Security sends you to add one by choice.
   { path: '/security/mfa', name: 'security-mfa', component: () => import('@/views/SecurityMfaView.vue') },
+  { path: '/security/sessions', name: 'security-sessions', component: () => import('@/views/SessionsView.vue') },
   { path: '/:rest(.*)', redirect: '/suites' },
 ];
 
@@ -71,6 +76,11 @@ router.beforeEach(async (to) => {
   if (session.signedIn) {
     // The password that signed in is breached: one page, until it changes.
     if (session.mustChangePassword && to.name !== 'security-password') return { name: 'security-password' };
+    // The policy demands an authenticator and there is none: the control
+    // plane refuses everything but enrolment (docs/AUTH.md §5.4), so the
+    // enrolment page and the changes it allows are the only places to be.
+    if (session.mfa.required && !session.mfa.enrolled
+        && !['security-mfa', 'security-password'].includes(to.name)) return { name: 'security-mfa' };
     // A signed-in arrival at an anonymous-only page is the return from a
     // Google sign-in landing on /login (docs/AUTH.md §6): the session is
     // already there, so go where the person was headed — a path inside
@@ -80,6 +90,8 @@ router.beforeEach(async (to) => {
   if (to.meta.open) return true;
   // A code is waiting to be entered (a reload mid-sign-up): that screen, not the form.
   if (session.flow === 'verify_email' && to.name !== 'verify') return { name: 'verify' };
+  // The password landed and the second factor did not, yet (a reload mid-sign-in).
+  if (session.flow === 'mfa_authenticate' && to.name !== 'mfa') return { name: 'mfa' };
   // Remember where they were going; the form sends them back after.
   return { name: 'login', query: to.fullPath === '/suites' ? {} : { next: to.fullPath } };
 });

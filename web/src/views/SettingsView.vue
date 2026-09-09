@@ -3,24 +3,57 @@
  * The two things that are deliberately not editable by a script: which origins
  * may be driven, and which vault keys exist. Values never appear — the server
  * only ever hands over names.
+ *
+ * Allowing an origin is the step-up action (docs/AUTH.md §9): the runner
+ * wants a token whose `su` is still in the future, which the control plane
+ * grants only for a recent proof of the strongest factor the account has.
+ * A 403 step_up_required opens the reauthentication sheet; the proof
+ * forgets the token, the retry mints a fresh one, and the origin goes in.
  */
 import { onMounted, ref } from 'vue';
 import { api } from '@/api';
 import { useLive } from '@/stores/live';
+import { useSession } from '@/stores/session';
+import { useGuarded } from '@/composables/reauth';
 import TopBar from '@/components/TopBar.vue';
 import Field from '@/components/Field.vue';
+import ReauthSheet from '@/components/ReauthSheet.vue';
 
 const live = useLive();
+const session = useSession();
+const guard = useGuarded();
 const draft = ref('');
 const error = ref(null);
 const state = ref(null);
 
 onMounted(async () => { state.value = await api.state(); });
 
+/** Allow the drafted origin; say which proof the runner wants when it says step-up. */
+async function allow() {
+  const origin = draft.value;
+  try {
+    const r = await api.allowOrigin(origin);
+    live.origins = r.origins;
+    draft.value = '';
+    return 'ok';
+  } catch (e) {
+    if (e.stepUp) {
+      session.forgetToken();
+      return session.mfa.enrolled ? 'mfa_reauthenticate' : 'reauthenticate';
+    }
+    error.value = e.message;
+    return 'error';
+  }
+}
+
 async function add() {
   error.value = null;
-  try { const r = await api.allowOrigin(draft.value); live.origins = r.origins; draft.value = ''; }
-  catch (e) { error.value = e.message; }
+  await guard.run(allow);
+}
+
+async function proved() {
+  error.value = null;
+  await guard.proved();
 }
 async function remove(o) {
   error.value = null;
@@ -88,4 +121,6 @@ async function remove(o) {
       </dl>
     </section>
   </div>
+
+  <ReauthSheet v-if="guard.flow.value" :flow="guard.flow.value" @done="proved" @cancel="guard.cancel()" />
 </template>
