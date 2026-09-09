@@ -51,9 +51,22 @@ async function call(path, { method = 'GET', body, csrf } = {}) {
   return data;
 }
 
+/**
+ * What /auth/me answers, and the shape login and an org switch answer too:
+ *
+ *   { user: {id, email, name}, org: {slug, name, role}, orgs: [...],
+ *     entitlements: {...}, mfa: {required, enrolled}, flags: {} }
+ *
+ * Everything here is for DISPLAY. Which organisation a call acts for, what
+ * the role allows and what the plan permits are decided by the control plane
+ * and the runner from a signed token; a value in this store changes what is
+ * drawn, never what is allowed. There is no isStaff and there will not be one.
+ */
+const ANONYMOUS = { user: null, org: null, orgs: [], entitlements: {}, mfa: { required: false, enrolled: false }, flags: {} };
+
 export const useSession = defineStore('session', {
   state: () => ({
-    user: null,
+    ...ANONYMOUS,
     ready: false,      // has the first "who am I" answered? guards the router
     csrf: '',
     error: '',
@@ -68,13 +81,23 @@ export const useSession = defineStore('session', {
   },
 
   actions: {
+    /** Take a /auth/me-shaped answer into the store. */
+    become(me) {
+      this.user = me?.user ?? null;
+      this.org = me?.org ?? null;
+      this.orgs = me?.orgs ?? [];
+      this.entitlements = me?.entitlements ?? {};
+      this.mfa = me?.mfa ?? ANONYMOUS.mfa;
+      this.flags = me?.flags ?? {};
+    },
+
     /** Called once at startup. Never throws — an unreachable control plane is anonymous, not a crash. */
     async boot() {
       if (!hasAuth()) { this.ready = true; return; }
       try {
         this.csrf = (await call('/auth/csrf')).csrfToken ?? '';
-        this.user = (await call('/auth/me')).user ?? null;
-      } catch { this.user = null; }
+        this.become(await call('/auth/me'));
+      } catch { this.become(null); }
       finally { this.ready = true; }
     },
 
@@ -82,7 +105,7 @@ export const useSession = defineStore('session', {
       this.error = '';
       try {
         const out = await call('/auth/login', { method: 'POST', body: { email, password }, csrf: this.csrf });
-        this.user = out.user;
+        this.become(out);
         // Django rotates the CSRF token on login, so the one we sent is already
         // dead. Taking the new one from the response is what stops the very
         // next request being a 403.
@@ -97,8 +120,21 @@ export const useSession = defineStore('session', {
         const out = await call('/auth/logout', { method: 'POST', csrf: this.csrf });
         if (out.csrfToken) this.csrf = out.csrfToken;
       } catch { /* going anonymous locally is the important half */ }
-      this.user = null;
+      this.become(null);
       this.forgetToken();
+    },
+
+    /**
+     * Act for another organisation. The control plane checks the membership
+     * and remembers the choice in the session; the token minted next carries
+     * it, which is why the current one is forgotten here — a token for the
+     * old organisation would keep driving the old organisation's state.
+     */
+    async switchOrg(slug) {
+      const out = await call('/auth/org', { method: 'POST', body: { org: slug }, csrf: this.csrf });
+      this.become(out);
+      this.forgetToken();
+      return this.org;
     },
 
     forgetToken() { this.token = ''; this.expiresAt = 0; this.pending = null; },
@@ -124,7 +160,7 @@ export const useSession = defineStore('session', {
           return this.token;
         } catch (err) {
           this.forgetToken();
-          if (err.status === 401) this.user = null;   // the session went away
+          if (err.status === 401) this.become(null);   // the session went away
           throw err;
         } finally { this.pending = null; }
       })();
