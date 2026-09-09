@@ -11,10 +11,11 @@ const suites = useSuites();
 const session = useSession();
 const route = useRoute();
 
-// The login page gets no shell. Every item in that sidebar needs the runner,
-// and the runner will refuse — a nav full of things that 401 is a broken
-// dashboard, not a sign-in screen.
-const shell = computed(() => route.name !== 'login');
+// The login page gets no shell, and neither does the page an account is sent
+// to when it must enrol an authenticator first. Every item in that sidebar
+// needs the runner, and the runner will refuse — a nav full of things that
+// 401 is a broken dashboard, not a sign-in screen.
+const shell = computed(() => !['login', 'security-mfa'].includes(route.name));
 
 /**
  * Nothing reaches the runner until there is someone to reach it as.
@@ -25,7 +26,10 @@ const shell = computed(() => route.name !== 'login');
  * would 401 before anyone had done anything wrong.
  */
 watch(() => session.signedIn, (yes) => {
-  if (!yes) return;
+  // Signed out — by a button, or by the control plane saying the session is
+  // over — means the socket goes too, so nobody stays attached to the
+  // browser as a person who has left.
+  if (!yes) return void live.disconnect();
   live.connect();
   suites.loadList();
 }, { immediate: true });

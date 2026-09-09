@@ -4,10 +4,11 @@
  * Every call funnels through `req`, which turns a non-2xx into a thrown Error
  * carrying the server's own message — so a view can `catch (e) { this.error =
  * e.message }` and show the same words the server chose, rather than "Request
- * failed". The origin gate is the one status worth naming: a 409 with
- * `needsOrigin` is not really an error, it is the app asking a person to
- * decide, so the error object carries that through for the view to offer a
- * button instead of a red box.
+ * failed". Three statuses are worth naming on the error object, because each
+ * is the app asking a person for something rather than reporting a fault: a
+ * 409 with `needsOrigin` wants a decision, a 403 `step_up_required` wants a
+ * fresh sign-in, and a 402 `entitlement` wants a bigger plan. The view offers
+ * the right button instead of a red box.
  *
  * Every path goes through `apiUrl`, which is the identity function while the
  * backend serves this app and a real origin once it does not. Writing the
@@ -42,6 +43,18 @@ async function req(path, { method = 'GET', body } = {}) {
     const err = new Error(data.error || `${method} ${path} failed (${res.status})`);
     err.status = res.status;
     if (data.needsOrigin) err.needsOrigin = data.needsOrigin;
+    // The plan said no (docs/AUTH.md §10): which limit, and which plan it is.
+    if (res.status === 402 && data.error === 'entitlement') {
+      err.entitlement = { limit: data.limit, plan: data.plan };
+      err.message = `Your ${data.plan ?? 'current'} plan does not allow this (${data.limit ?? 'limit reached'})`;
+    }
+    // Allowing an origin wants a recent sign-in (docs/AUTH.md §9). The
+    // reauthentication flow that satisfies it is the MFA step's; until then
+    // the words say what to do.
+    if (res.status === 403 && data.error === 'step_up_required') {
+      err.stepUp = true;
+      err.message = 'Allowing an origin needs a recent sign-in — sign in again, then retry';
+    }
     throw err;
   }
   return data;
@@ -49,6 +62,9 @@ async function req(path, { method = 'GET', body } = {}) {
 
 export const api = {
   state:   () => req('/api/state'),
+  // A 30-second, single-use ticket the socket is opened with, so the token
+  // itself never goes into a URL (docs/AUTH.md §9).
+  socketTicket: () => req('/api/socket-ticket', { method: 'POST' }),
   version: () => req('/api/version'),
   runs:    (suite) => req(`/api/runs${suite ? `?suite=${encodeURIComponent(suite)}` : ''}`),
   defects: () => req('/api/defects'),
