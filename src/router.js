@@ -30,6 +30,9 @@ const routes = [
   { path: '/defects', name: 'defects', component: () => import('@/views/DefectsView.vue') },
   { path: '/console', name: 'console', component: () => import('@/views/ConsoleView.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
+  // The organisation you act for (docs/AUTH.md §10): members, roles,
+  // invitations, the plan and how much of it the runner counts as used.
+  { path: '/organisation', name: 'organisation', component: () => import('@/views/OrganizationView.vue') },
 
   // The account pages (docs/AUTH.md §4, §5, §7).
   { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { open: true, anonymousOnly: true } },

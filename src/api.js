@@ -4,11 +4,13 @@
  * Every call funnels through `req`, which turns a non-2xx into a thrown Error
  * carrying the server's own message — so a view can `catch (e) { this.error =
  * e.message }` and show the same words the server chose, rather than "Request
- * failed". Three statuses are worth naming on the error object, because each
+ * failed". Five statuses are worth naming on the error object, because each
  * is the app asking a person for something rather than reporting a fault: a
- * 409 with `needsOrigin` wants a decision, a 403 `step_up_required` wants a
- * fresh sign-in, and a 402 `entitlement` wants a bigger plan. The view offers
- * the right button instead of a red box.
+ * 409 with `needsOrigin` wants a decision, a 409 `runner_busy` wants patience
+ * (another organisation has the browser), a 403 `step_up_required` wants a
+ * fresh sign-in, a 403 `forbidden` wants an owner or admin, and a 402
+ * `entitlement` wants a bigger plan. The view offers the right button — or
+ * the right sentence — instead of a red box.
  *
  * Every path goes through `apiUrl`, which is the identity function while the
  * backend serves this app and a real origin once it does not. Writing the
@@ -47,6 +49,17 @@ async function req(path, { method = 'GET', body } = {}) {
     if (res.status === 402 && data.error === 'entitlement') {
       err.entitlement = { limit: data.limit, plan: data.plan };
       err.message = `Your ${data.plan ?? 'current'} plan does not allow this (${data.limit ?? 'limit reached'})`;
+    }
+    // One browser, one driving organisation (docs/AUTH.md §10): someone
+    // else has it, and the honest answer is to say so and wait.
+    if (res.status === 409 && data.error === 'runner_busy') {
+      err.busy = { org: data.org ?? null };
+      err.message = 'Another organisation is driving the runner right now — try again when it is free';
+    }
+    // Origins and the vault are an owner's or admin's to change.
+    if (res.status === 403 && data.error === 'forbidden') {
+      err.forbidden = true;
+      err.message = 'Only an owner or admin of this organisation can do that';
     }
     // Allowing an origin wants a recent proof of the strongest factor the
     // account has (docs/AUTH.md §9): the view opens the reauthentication

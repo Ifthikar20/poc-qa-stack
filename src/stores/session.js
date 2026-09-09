@@ -182,6 +182,10 @@ export const useSession = defineStore('session', {
   getters: {
     signedIn: (s) => !hasAuth() || s.user !== null,
     required: () => hasAuth(),
+    // For drawing the buttons only: the control plane and the runner decide
+    // again, from the Membership row and the token, whether they work.
+    manages: (s) => !hasAuth() || ['owner', 'admin'].includes(s.org?.role),
+    owns: (s) => !hasAuth() || s.org?.role === 'owner',
   },
 
   actions: {
@@ -570,11 +574,63 @@ export const useSession = defineStore('session', {
      * old organisation would keep driving the old organisation's state.
      */
     async switchOrg(slug) {
+      // The socket first: it is bound to a token for the old organisation,
+      // and would keep showing the old organisation's page after the switch.
+      useLive().disconnect();
       const { status, body } = await call(this, '/auth/org', { method: 'POST', body: { org: slug } });
       if (status !== 200) throw new Error(messageOf(body, 'Could not switch organisation'));
       this.become(body);
       this.forgetToken();
       return this.org;
+    },
+
+    /** Who is in the selected organisation: [{id, email, name, role, joinedAt, you}]. */
+    async members() {
+      const { status, body } = await call(this, '/auth/members');
+      return status === 200 ? (body.members ?? []) : [];
+    },
+
+    /** An owner sets another member's role. Returns true, or sets `error`. */
+    async setRole(id, role) {
+      const { status, body } = await call(this, `/auth/members/${id}`, { method: 'PATCH', body: { role } });
+      if (status === 200) { this.error = ''; return true; }
+      this.error = messageOf(body, 'Could not change that role');
+      return false;
+    },
+
+    /**
+     * Remove a member — or leave, with your own id, after which the session
+     * is back on the personal organisation and the answer says so.
+     */
+    async removeMember(id) {
+      const { status, body } = await call(this, `/auth/members/${id}`, { method: 'DELETE' });
+      if (status !== 200) { this.error = messageOf(body, 'Could not remove that member'); return false; }
+      this.error = '';
+      if (body.left) { useLive().disconnect(); this.become(body); this.forgetToken(); }
+      return true;
+    },
+
+    /** The selected organisation's invitations (owners and admins). */
+    async invitations() {
+      const { status, body } = await call(this, '/auth/invitations');
+      return status === 200 ? (body.invitations ?? []) : [];
+    },
+
+    /** Invite an address. The token goes to their mailbox and nowhere else. Returns the row, or null with `error` set. */
+    async invite(email, role) {
+      const { status, body } = await call(this, '/auth/invitations', { method: 'POST', body: { email, role } });
+      if (status === 201) { this.error = ''; return body.invitation; }
+      this.error = status === 402
+        ? `Your ${body.plan ?? 'current'} plan has no seat left (${body.limit ?? 'members.max'})`
+        : messageOf(body, 'Could not send that invitation');
+      return null;
+    },
+
+    async revokeInvitation(id) {
+      const { status, body } = await call(this, `/auth/invitations/${id}`, { method: 'DELETE' });
+      if (status === 200) { this.error = ''; return true; }
+      this.error = messageOf(body, 'Could not revoke that invitation');
+      return false;
     },
 
     // ---------------------------------------------------------------- the token

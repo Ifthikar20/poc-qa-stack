@@ -1,5 +1,6 @@
 <script setup>
 import { useLive } from '@/stores/live';
+import RunnerBusy from '@/components/RunnerBusy.vue';
 defineProps({ crumbs: { type: Array, default: () => [] } });
 const live = useLive();
 </script>
@@ -15,6 +16,7 @@ const live = useLive();
     </nav>
 
     <div class="ml-auto flex items-center gap-2">
+      <RunnerBusy compact />
       <span v-if="live.running"
             class="flex items-center gap-2 rounded-full border border-brand/20 bg-brand-50 px-3 py-1.5
                    text-[12.5px] font-medium text-brand-2">

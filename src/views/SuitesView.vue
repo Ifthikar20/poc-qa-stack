@@ -20,6 +20,8 @@ import HeroPanel from '@/components/HeroPanel.vue';
 import TopBar from '@/components/TopBar.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Btn from '@/components/Btn.vue';
+import UpgradePrompt from '@/components/UpgradePrompt.vue';
+import RunnerBusy from '@/components/RunnerBusy.vue';
 
 const router = useRouter();
 const store = useSuites();
@@ -27,6 +29,7 @@ const store = useSuites();
 const url = ref('');
 const busy = ref(false);
 const error = ref(null);
+const upgrade = ref(null);     // the plan said no: {limit, plan}
 const needsOrigin = ref(null);
 const result = ref(null);
 
@@ -34,7 +37,7 @@ onMounted(() => store.loadList());
 
 async function quickstart() {
   if (!url.value.trim()) return;
-  busy.value = true; error.value = null; needsOrigin.value = null; result.value = null;
+  busy.value = true; error.value = null; upgrade.value = null; needsOrigin.value = null; result.value = null;
   try {
     const r = await api.quickstart(url.value.trim());
     result.value = r;
@@ -42,6 +45,8 @@ async function quickstart() {
     router.push(`/suites/${r.suite.id}`);
   } catch (e) {
     if (e.needsOrigin) needsOrigin.value = e.needsOrigin;
+    // The plan said no: a prompt with the limit in words, not a red box.
+    else if (e.entitlement) upgrade.value = e.entitlement;
     else error.value = e.message;
   } finally { busy.value = false; }
 }
@@ -49,7 +54,10 @@ async function quickstart() {
 async function allowAndRetry() {
   busy.value = true;
   try { await api.allowOrigin(needsOrigin.value); needsOrigin.value = null; await quickstart(); }
-  catch (e) { error.value = e.message; busy.value = false; }
+  catch (e) {
+    if (e.entitlement) upgrade.value = e.entitlement; else error.value = e.message;
+    busy.value = false;
+  }
 }
 </script>
 
@@ -89,6 +97,9 @@ async function allowAndRetry() {
         </p>
         <Btn class="mt-3" :busy="busy" busy-label="Allowing…" @click="allowAndRetry">Allow it and continue</Btn>
       </div>
+
+      <UpgradePrompt v-if="upgrade" class="mt-4 max-w-2xl" :limit="upgrade.limit" :plan="upgrade.plan" @dismiss="upgrade = null" />
+      <RunnerBusy class="mt-4 max-w-2xl" />
 
       <p v-if="error" class="mt-4 max-w-2xl rounded-xl border border-critical/25 bg-critical/5 px-4 py-3 text-[13px] text-critical">
         {{ error }}

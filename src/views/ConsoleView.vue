@@ -23,6 +23,7 @@ import Field from '@/components/Field.vue';
 import FlowBox from '@/components/FlowBox.vue';
 import Btn from '@/components/Btn.vue';
 import AddressBar from '@/components/AddressBar.vue';
+import UpgradePrompt from '@/components/UpgradePrompt.vue';
 
 const VIEW = { w: 1180, h: 760 };          // must match the server's viewport
 
@@ -120,6 +121,10 @@ onBeforeUnmount(() => live.detachCanvas());
  */
 const waiting = computed(() => {
   if (!live.connected) return { title: 'Connecting to the runner', body: 'The server drives the browser you are about to see. Reconnecting…' };
+  // Another organisation has the browser (docs/AUTH.md §10): the runner
+  // sends this socket no frames of their page, so the honest picture is
+  // none — and a sentence saying whose it is and when it will be free.
+  if (live.busy) return { title: `${live.driving.org} is driving the runner`, body: 'One browser, one organisation at a time. Nothing of theirs reaches this screen. You can open a page once their run has finished and they have been quiet for a minute.' };
   if (opening.value) return { title: `Opening ${opening.value}`, body: 'Loading the page in the runner\u2019s browser.' };
   /**
    * Nothing open is checked BEFORE `painted`, because `about:blank` paints — a
@@ -222,7 +227,11 @@ async function allow() {
     // A redirect prompt is about a page we are ALREADY on — reopening it would
     // throw away whatever you were doing there, recording included.
     if (url && !redirected) { urlBox.value = url; open(); }
-  } catch (e) { error.value = e.message; } finally { allowing.value = false; }
+  } catch (e) {
+    // The plan's refusal is a prompt, not a red box.
+    if (e.entitlement) live.upgrade = { ...e.entitlement, of: 'origin.add' };
+    else error.value = e.message;
+  } finally { allowing.value = false; }
 }
 const run = () => live.send({ t: 'command', text: script.value, pace: live.paceMs });
 const record = () => live.send({ t: 'record.start' });
@@ -439,6 +448,8 @@ watch(() => live.recordedFlow, (f) => {
         Point at the page above and use your wheel or trackpad to scroll it — or the buttons.
         Clicking and typing there go to the page you are driving, never to this one.
       </p>
+
+      <UpgradePrompt v-if="live.upgrade" class="mt-3" :limit="live.upgrade.limit" :plan="live.upgrade.plan" @dismiss="live.upgrade = null" />
 
       <div v-if="live.needsOrigin" class="mt-3 card wash-warm p-4">
         <p class="text-[13.5px] font-medium">{{ live.needsOrigin.origin }} is not allowed yet.</p>
