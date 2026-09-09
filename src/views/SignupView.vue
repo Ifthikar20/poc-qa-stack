@@ -8,15 +8,21 @@
  * by this page, because this page can be read by anyone with a list of
  * addresses. The only refusal said out loud is a domain rule, which is
  * public policy.
+ *
+ * Google is the same door as on the sign-in page: the control plane makes
+ * the account when the identity is new and admitted by the same policy
+ * this form is judged by, and a refusal comes back to /login with one
+ * sentence (docs/AUTH.md §6).
  */
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useSession } from '@/stores/session';
+import { safeNext, useSession } from '@/stores/session';
 import AuthShell from '@/components/AuthShell.vue';
 import Field from '@/components/Field.vue';
 import PasswordField from '@/components/PasswordField.vue';
 import Btn from '@/components/Btn.vue';
 import Turnstile from '@/components/Turnstile.vue';
+import GoogleButton from '@/components/GoogleButton.vue';
 
 const session = useSession();
 const router = useRouter();
@@ -68,6 +74,13 @@ async function submit() {
            :disabled="!email || !password || (askTurnstile && !turnstileToken)" class="w-full justify-center">
         Continue
       </Btn>
+
+      <template v-if="session.config.google">
+        <p class="flex items-center gap-3 text-[11.5px] uppercase tracking-wide text-ink-3">
+          <span class="h-px flex-1 bg-hairline" />or<span class="h-px flex-1 bg-hairline" />
+        </p>
+        <GoogleButton process="login" :next="safeNext(route.query.next)" />
+      </template>
     </form>
 
     <template #foot>

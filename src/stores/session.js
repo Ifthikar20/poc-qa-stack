@@ -94,6 +94,21 @@ function pendingFlow(body) {
 }
 
 /**
+ * A `?next=` worth honouring: a path inside this app, and nothing else. Not
+ * another site, not a protocol-relative `//host`, not a `/\host` a browser
+ * would read the same way. Used by the login page, the verify page, the
+ * router and the Google button, so the four cannot disagree about what a
+ * safe destination is.
+ */
+export function safeNext(value) {
+  const n = String(value ?? '');
+  return /^\/(?![/\\])/.test(n) ? n : '';
+}
+
+/** Where the SPA asks the control plane to start a Google sign-in (docs/AUTH.md §6). */
+export const PROVIDER_REDIRECT = `${HEADLESS}/auth/provider/redirect`;
+
+/**
  * What /auth/me answers:
  *
  *   { user: {id, email, name}, org: {slug, name, role}, orgs: [...],
@@ -113,9 +128,10 @@ export const useSession = defineStore('session', {
     csrf: '',
     error: '',
     errorCode: '',     // allauth's code for the last refusal, e.g. 'turnstile_required'
-    // What the sign-up page needs before anyone types: the mode, and the
-    // Turnstile site key when there is one (GET /auth/config).
-    config: { signup: 'invite', domains: [], turnstile: null },
+    // What the sign-up page needs before anyone types: the mode, the
+    // Turnstile site key when there is one, and whether a Google client is
+    // configured so "Continue with Google" has somewhere to go (GET /auth/config).
+    config: { signup: 'invite', domains: [], turnstile: null, google: false },
     // allauth's pending flow after the last call, e.g. 'verify_email' — the
     // router sends the person to the screen that completes it.
     flow: null,
@@ -306,6 +322,35 @@ export const useSession = defineStore('session', {
       if (status === 200) { this.error = ''; this.pendingEmail = email; return 'ok'; }
       if (status === 401 && pendingFlow(body) === 'reauthenticate') { this.error = ''; return 'reauthenticate'; }
       this.error = status === 429 ? 'Too many changes. Wait a minute and try again.' : messageOf(body, 'Could not change the address');
+      return 'error';
+    },
+
+    // ---------------------------------------------------------------- connected accounts
+
+    /**
+     * The Google identities that open this account, as allauth lists them:
+     * [{uid, provider: {id, name}, display}]. Starting a connect is not a
+     * call — it is the GoogleButton's form POST, because the answer is a
+     * redirect to Google that only a navigation can follow.
+     */
+    async providers() {
+      const { status, body } = await call(this, `${HEADLESS}/account/providers`);
+      return status === 200 ? (body.data ?? []) : [];
+    },
+
+    /**
+     * Detach one identity. Returns 'ok', 'reauthenticate' (prove the
+     * password first, then call again), or 'error'. The control plane
+     * refuses to detach the last way into an account that has no
+     * password; its words are shown as they are.
+     */
+    async disconnectProvider(provider, uid) {
+      const { status, body } = await call(this, `${HEADLESS}/account/providers`, {
+        method: 'DELETE', body: { provider, account: uid },
+      });
+      if (status === 200) { this.error = ''; return 'ok'; }
+      if (status === 401 && pendingFlow(body) === 'reauthenticate') { this.error = ''; return 'reauthenticate'; }
+      this.error = messageOf(body, 'Could not disconnect that account');
       return 'error';
     },
 

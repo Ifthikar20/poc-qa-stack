@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import { useSession } from '@/stores/session';
+import { safeNext, useSession } from '@/stores/session';
 
 /**
  * Routes mirror the sidebar, and every one of them is linkable — a suite page
@@ -71,7 +71,11 @@ router.beforeEach(async (to) => {
   if (session.signedIn) {
     // The password that signed in is breached: one page, until it changes.
     if (session.mustChangePassword && to.name !== 'security-password') return { name: 'security-password' };
-    return to.meta.anonymousOnly ? '/suites' : true;
+    // A signed-in arrival at an anonymous-only page is the return from a
+    // Google sign-in landing on /login (docs/AUTH.md §6): the session is
+    // already there, so go where the person was headed — a path inside
+    // this app, or the suites.
+    return to.meta.anonymousOnly ? (safeNext(to.query.next) || '/suites') : true;
   }
   if (to.meta.open) return true;
   // A code is waiting to be entered (a reload mid-sign-up): that screen, not the form.
