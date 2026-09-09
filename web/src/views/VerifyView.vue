@@ -11,7 +11,7 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useSession } from '@/stores/session';
+import { safeNext, useSession } from '@/stores/session';
 import AuthShell from '@/components/AuthShell.vue';
 import Field from '@/components/Field.vue';
 import Btn from '@/components/Btn.vue';
@@ -27,10 +27,7 @@ const changing = computed(() => session.user !== null);
 
 onMounted(() => { session.error = ''; });
 
-function nextPath() {
-  const n = String(route.query.next ?? '');
-  return n.startsWith('/') && !n.startsWith('//') ? n : '/suites';
-}
+const nextPath = () => safeNext(route.query.next) || '/suites';
 
 async function submit() {
   busy.value = true;
