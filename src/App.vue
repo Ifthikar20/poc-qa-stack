@@ -11,12 +11,12 @@ const suites = useSuites();
 const session = useSession();
 const route = useRoute();
 
-// The account pages get no shell: sign in, sign up, the code, the reset, the
-// invitation landing, the two changes, and the page an account is sent to
-// when it must enrol an authenticator first. Every item in that sidebar
-// needs the runner, and the runner will refuse — a nav full of things that
-// 401 is a broken dashboard, not a sign-in screen.
-const BARE = ['login', 'signup', 'verify', 'forgot-password', 'reset-password', 'invite',
+// The account pages get no shell: sign in, the second factor, sign up, the
+// code, the reset, the invitation landing, the two changes, and the page an
+// account is sent to when it must enrol an authenticator first. Every item
+// in that sidebar needs the runner, and the runner will refuse — a nav full
+// of things that 401 is a broken dashboard, not a sign-in screen.
+const BARE = ['login', 'mfa', 'signup', 'verify', 'forgot-password', 'reset-password', 'invite',
               'security-password', 'security-email', 'security-mfa'];
 const shell = computed(() => !BARE.includes(route.name));
 
@@ -28,13 +28,14 @@ const shell = computed(() => !BARE.includes(route.name));
  * 1200ms for as long as it takes to type a password, and the first suite fetch
  * would 401 before anyone had done anything wrong.
  */
-watch(() => [session.signedIn, session.mustChangePassword], ([yes, locked]) => {
+watch(() => [session.signedIn, session.mustChangePassword, session.mfa.required && !session.mfa.enrolled], ([yes, locked, unenrolled]) => {
   // Signed out — by a button, or by the control plane saying the session is
   // over — means the socket goes too, so nobody stays attached to the
   // browser as a person who has left. A session that may only change its
-  // password is not attached either: the control plane would refuse the
-  // token, and every refusal would route back to the same page.
-  if (!yes || locked) return void live.disconnect();
+  // password, or must enrol an authenticator first, is not attached
+  // either: the control plane would refuse the token, and every refusal
+  // would route back to the same page.
+  if (!yes || locked || unenrolled) return void live.disconnect();
   live.connect();
   suites.loadList();
 }, { immediate: true });

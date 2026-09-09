@@ -23,12 +23,22 @@
  * reauthentication. `absorb()` reads that once, for every call, and the views
  * route on the word it returns rather than each parsing a response.
  *
+ * The second factor (docs/AUTH.md §5, §7.2) is the same API: the challenge
+ * after a password, a passkey that signs in on its own, and the enrolment
+ * endpoints. A sensitive change — the password, the address, an
+ * authenticator, the recovery codes, a Google identity — may be answered
+ * with a reauthentication flow instead; `guarded()` turns that into the word
+ * the views hand to the reauthentication sheet, which proves whatever the
+ * control plane asked for (the password, or the second factor for an account
+ * that has one) and lets the view try again.
+ *
  * When VITE_AUTH_URL is unset there is no control plane, `token()` returns null
  * and nothing here does anything. That is the laptop case and it stays working.
  */
 import { defineStore } from 'pinia';
 import { authUrl, hasAuth } from '@/config';
 import { useLive } from '@/stores/live';
+import * as webauthn from '@/webauthn';
 
 /**
  * Route from inside the store. The router imports this store for its guard,
@@ -93,6 +103,25 @@ function pendingFlow(body) {
   return body?.data?.flows?.find((f) => f.is_pending)?.id ?? null;
 }
 
+/** The types an mfa_authenticate / mfa_reauthenticate flow offers, e.g. ['totp', 'webauthn']. */
+function flowTypes(body, id) {
+  return body?.data?.flows?.find((f) => f.id === id)?.types ?? [];
+}
+
+/**
+ * Which reauthentication a 401 to a signed-in session asks for, or null.
+ * The control plane says `mfa_reauthenticate` (pending) for an account that
+ * holds an authenticator — the password is never enough for it — and
+ * allauth lists `reauthenticate` for one that does not.
+ */
+export function reauthFlow(body) {
+  if (!body?.meta?.is_authenticated) return null;
+  const ids = (body?.data?.flows ?? []).map((f) => f.id);
+  if (ids.includes('mfa_reauthenticate')) return 'mfa_reauthenticate';
+  if (ids.includes('reauthenticate')) return 'reauthenticate';
+  return null;
+}
+
 /**
  * A `?next=` worth honouring: a path inside this app, and nothing else. Not
  * another site, not a protocol-relative `//host`, not a `/\host` a browser
@@ -119,7 +148,7 @@ export const PROVIDER_REDIRECT = `${HEADLESS}/auth/provider/redirect`;
  * and the runner from a signed token; a value in this store changes what is
  * drawn, never what is allowed. There is no isStaff and there will not be one.
  */
-const ANONYMOUS = { user: null, org: null, orgs: [], entitlements: {}, mfa: { required: false, enrolled: false }, flags: {} };
+const ANONYMOUS = { user: null, org: null, orgs: [], entitlements: {}, mfa: { required: false, enrolled: false, reasons: [] }, flags: {} };
 
 export const useSession = defineStore('session', {
   state: () => ({
@@ -135,6 +164,12 @@ export const useSession = defineStore('session', {
     // allauth's pending flow after the last call, e.g. 'verify_email' — the
     // router sends the person to the screen that completes it.
     flow: null,
+    // The kinds of second factor the pending challenge accepts
+    // ('totp', 'recovery_codes', 'webauthn'), so the challenge page offers
+    // the right buttons.
+    mfaTypes: [],
+    // The same, for a reauthentication the control plane asked for.
+    reauthTypes: [],
     pendingEmail: '',  // the address a code was sent to, for the verify page
     // The password that signed this session in is in a breach corpus; the
     // control plane allows nothing but changing it (docs/AUTH.md §3).
@@ -182,7 +217,10 @@ export const useSession = defineStore('session', {
         // and the router should land on the code screen, not the form.
         if (!this.user) {
           const { status, body } = await call(this, `${HEADLESS}/auth/session`);
-          if (status === 401) this.flow = pendingFlow(body);
+          if (status === 401) {
+            this.flow = pendingFlow(body);
+            if (this.flow === 'mfa_authenticate') this.mfaTypes = flowTypes(body, this.flow);
+          }
         }
       } catch { this.become(null); }
       finally { this.ready = true; }
@@ -205,7 +243,11 @@ export const useSession = defineStore('session', {
       }
       if (status === 401) {
         const flow = pendingFlow(body);
-        if (flow) { this.flow = flow; return flow; }
+        if (flow) {
+          this.flow = flow;
+          if (flow === 'mfa_authenticate') this.mfaTypes = flowTypes(body, flow);
+          return flow;
+        }
         this.become(null);
         this.flow = null;
         return 'anonymous';
@@ -293,6 +335,11 @@ export const useSession = defineStore('session', {
       const res = await call(this, `${HEADLESS}/account/password/change`, {
         method: 'POST', body: { current_password: current, new_password: next },
       });
+      // A 401 to a still-signed-in session is the control plane asking for
+      // a fresh proof first (the second factor, for an account that has
+      // one); the caller shows the sheet and calls again.
+      const wanted = res.status === 401 ? reauthFlow(res.body) : null;
+      if (wanted) { this.error = ''; return wanted; }
       // The control plane ends this session on a change (every other one
       // too): a 401 with nothing pending is the change having worked.
       if (res.status === 401 && !pendingFlow(res.body)) {
@@ -306,23 +353,180 @@ export const useSession = defineStore('session', {
       return this.absorb(res, { fallback: 'Could not change the password' });
     },
 
-    /** Prove the password again, for a change the control plane says is too far from the last proof. */
+    /**
+     * Read the answer to a sensitive change: 'ok', the reauthentication flow
+     * the control plane wants first ('reauthenticate' for the password,
+     * 'mfa_reauthenticate' for the second factor — the caller shows the
+     * sheet and calls again), 'anonymous' when the session is gone, or
+     * 'error' with `this.error` set.
+     */
+    async guarded(res, { fallback, tooMany = 'Too many attempts. Wait a minute and try again.' } = {}) {
+      const { status, body } = res;
+      this.error = '';
+      this.errorCode = codeOf(body);
+      if (status === 200) return 'ok';
+      if (status === 401) {
+        const flow = reauthFlow(body);
+        if (flow) { this.reauthTypes = flowTypes(body, 'mfa_reauthenticate'); return flow; }
+        this.become(null);
+        this.flow = null;
+        return 'anonymous';
+      }
+      this.error = status === 429 ? tooMany : messageOf(body, fallback);
+      return 'error';
+    },
+
+    /**
+     * Prove the password again, for a change the control plane says is too
+     * far from the last proof. Refused — with the second factor asked for
+     * instead — for an account that holds an authenticator (docs/AUTH.md §7.2).
+     */
     async reauthenticate(password) {
       const res = await call(this, `${HEADLESS}/auth/reauthenticate`, { method: 'POST', body: { password } });
       if (res.status === 200) { this.error = ''; this.forgetToken(); return 'ok'; }
-      return this.absorb(res, { fallback: 'That password was not accepted' });
+      return this.guarded(res, { fallback: 'That password was not accepted' });
     },
 
     /**
      * Start changing the address: a code goes to the new one. Returns 'ok',
-     * 'reauthenticate' (prove the password first, then call again), or 'error'.
+     * a reauthentication flow (prove it first, then call again), or 'error'.
      */
     async changeEmail(email) {
-      const { status, body } = await call(this, `${HEADLESS}/account/email`, { method: 'POST', body: { email } });
-      if (status === 200) { this.error = ''; this.pendingEmail = email; return 'ok'; }
-      if (status === 401 && pendingFlow(body) === 'reauthenticate') { this.error = ''; return 'reauthenticate'; }
-      this.error = status === 429 ? 'Too many changes. Wait a minute and try again.' : messageOf(body, 'Could not change the address');
-      return 'error';
+      const res = await call(this, `${HEADLESS}/account/email`, { method: 'POST', body: { email } });
+      const outcome = await this.guarded(res, { fallback: 'Could not change the address', tooMany: 'Too many changes. Wait a minute and try again.' });
+      if (outcome === 'ok') this.pendingEmail = email;
+      return outcome;
+    },
+
+    // ---------------------------------------------------------------- the second factor
+
+    /** The code from the app, or a recovery code, answering the challenge after a password. */
+    async authenticateCode(code) {
+      const res = await call(this, `${HEADLESS}/auth/2fa/authenticate`, { method: 'POST', body: { code } });
+      return this.absorb(res, { fallback: 'That code was not accepted' });
+    },
+
+    /** A passkey answering the challenge after a password. */
+    async authenticatePasskey() {
+      return this.ceremony(`${HEADLESS}/auth/webauthn/authenticate`, (res) => this.absorb(res, { fallback: 'That passkey was not accepted' }));
+    },
+
+    /** A passkey signing in on its own (docs/AUTH.md §5): no password, and it is the second factor. */
+    async passkeyLogin() {
+      useLive().disconnect();
+      this.forgetToken();
+      return this.ceremony(`${HEADLESS}/auth/webauthn/login`, (res) => this.absorb(res, { fallback: 'Could not sign in with that passkey' }));
+    },
+
+    /** The code from the app (or a recovery code) as the reauthentication a sensitive change wants. */
+    async reauthenticateCode(code) {
+      const res = await call(this, `${HEADLESS}/auth/2fa/reauthenticate`, { method: 'POST', body: { code } });
+      if (res.status === 200) { this.error = ''; this.forgetToken(); return 'ok'; }
+      return this.guarded(res, { fallback: 'That code was not accepted' });
+    },
+
+    /** A passkey as the reauthentication. */
+    async reauthenticatePasskey() {
+      return this.ceremony(`${HEADLESS}/auth/webauthn/reauthenticate`, async (res) => {
+        if (res.status === 200) { this.error = ''; this.forgetToken(); return 'ok'; }
+        return this.guarded(res, { fallback: 'That passkey was not accepted' });
+      });
+    },
+
+    /**
+     * One WebAuthn assertion: GET the request options, have the browser sign
+     * them, POST the credential, and let `read` say what it meant. A
+     * ceremony the person cancelled is an error in words, not a crash.
+     */
+    async ceremony(path, read) {
+      const opts = await call(this, path);
+      if (opts.status !== 200) return this.guarded(opts, { fallback: 'Could not start the passkey' });
+      let credential;
+      try { credential = await webauthn.get(opts.body.data.request_options); }
+      catch (err) { this.error = err?.name === 'NotAllowedError' ? 'The passkey was not used.' : (err?.message || 'The passkey did not work'); return 'error'; }
+      return read(await call(this, path, { method: 'POST', body: { credential } }));
+    },
+
+    /** What the account holds: [{type, created_at, last_used_at, id?, name?, unused_code_count?}]. */
+    async authenticators() {
+      const { status, body } = await call(this, `${HEADLESS}/account/authenticators`);
+      return status === 200 ? (body.data ?? []) : [];
+    },
+
+    /**
+     * Begin enrolling an authenticator app. Returns {secret, url} for the QR
+     * code when there is none yet, 'enrolled' when there already is, a
+     * reauthentication flow, or 'error'.
+     */
+    async totpStart() {
+      const { status, body } = await call(this, `${HEADLESS}/account/authenticators/totp`);
+      if (status === 404) return { secret: body.meta?.secret, url: body.meta?.totp_url, svg: body.meta?.svg ?? '' };
+      if (status === 200) return 'enrolled';
+      return this.guarded({ status, body }, { fallback: 'Could not start the enrolment' });
+    },
+
+    /** Finish enrolling the app with the code it shows. */
+    async totpActivate(code) {
+      const res = await call(this, `${HEADLESS}/account/authenticators/totp`, { method: 'POST', body: { code } });
+      const outcome = await this.guarded(res, { fallback: 'That code was not accepted' });
+      if (outcome === 'ok') { this.forgetToken(); await this.refresh(); }
+      return outcome;
+    },
+
+    async totpRemove() {
+      const res = await call(this, `${HEADLESS}/account/authenticators/totp`, { method: 'DELETE' });
+      const outcome = await this.guarded(res, { fallback: 'Could not remove the authenticator app' });
+      if (outcome === 'ok') { this.forgetToken(); await this.refresh(); }
+      return outcome;
+    },
+
+    /**
+     * The recovery codes: {codes, unused, total}. `codes` is present only the
+     * first time they are read after being made — the control plane shows
+     * them once and never again (docs/AUTH.md §5).
+     */
+    async recoveryCodes({ regenerate = false } = {}) {
+      const res = await call(this, `${HEADLESS}/account/authenticators/recovery-codes`, regenerate ? { method: 'POST' } : {});
+      if (res.status === 404) return { codes: null, unused: 0, total: 0 };
+      const outcome = await this.guarded(res, { fallback: 'Could not read the recovery codes' });
+      if (outcome !== 'ok') return outcome;
+      const d = res.body.data ?? {};
+      return { codes: d.unused_codes ?? null, unused: d.unused_code_count ?? 0, total: d.total_code_count ?? 0 };
+    },
+
+    /** Add a passkey: the control plane's creation options, the browser's ceremony, the credential back. */
+    async passkeyAdd(name) {
+      const opts = await call(this, `${HEADLESS}/account/authenticators/webauthn?passwordless`);
+      if (opts.status !== 200) return this.guarded(opts, { fallback: 'Could not start adding a passkey' });
+      let credential;
+      try { credential = await webauthn.create(opts.body.data.creation_options); }
+      catch (err) { this.error = err?.name === 'NotAllowedError' ? 'No passkey was made.' : (err?.message || 'The passkey could not be made'); return 'error'; }
+      const res = await call(this, `${HEADLESS}/account/authenticators/webauthn`, { method: 'POST', body: { name, credential } });
+      const outcome = await this.guarded(res, { fallback: 'That passkey was not accepted' });
+      if (outcome === 'ok') { this.forgetToken(); await this.refresh(); }
+      return outcome;
+    },
+
+    async passkeyRemove(id) {
+      const res = await call(this, `${HEADLESS}/account/authenticators/webauthn`, { method: 'DELETE', body: { authenticators: [id] } });
+      const outcome = await this.guarded(res, { fallback: 'Could not remove that passkey' });
+      if (outcome === 'ok') { this.forgetToken(); await this.refresh(); }
+      return outcome;
+    },
+
+    // ---------------------------------------------------------------- sessions
+
+    /** Every session the account has: [{id, ip, user_agent, created_at, last_seen_at, is_current}]. */
+    async sessions() {
+      const { status, body } = await call(this, `${HEADLESS}/auth/sessions`);
+      return status === 200 ? (body.data ?? []) : [];
+    },
+
+    /** End the sessions named; the rest of the list comes back. */
+    async endSessions(ids) {
+      const res = await call(this, `${HEADLESS}/auth/sessions`, { method: 'DELETE', body: { sessions: ids } });
+      const outcome = await this.guarded(res, { fallback: 'Could not sign those sessions out' });
+      return outcome === 'ok' ? (res.body.data ?? []) : outcome;
     },
 
     // ---------------------------------------------------------------- connected accounts
@@ -339,19 +543,14 @@ export const useSession = defineStore('session', {
     },
 
     /**
-     * Detach one identity. Returns 'ok', 'reauthenticate' (prove the
-     * password first, then call again), or 'error'. The control plane
-     * refuses to detach the last way into an account that has no
-     * password; its words are shown as they are.
+     * Detach one identity. Returns 'ok', a reauthentication flow (prove it
+     * first, then call again), or 'error'. The control plane refuses to
+     * detach the last way into an account that has no password; its words
+     * are shown as they are.
      */
     async disconnectProvider(provider, uid) {
-      const { status, body } = await call(this, `${HEADLESS}/account/providers`, {
-        method: 'DELETE', body: { provider, account: uid },
-      });
-      if (status === 200) { this.error = ''; return 'ok'; }
-      if (status === 401 && pendingFlow(body) === 'reauthenticate') { this.error = ''; return 'reauthenticate'; }
-      this.error = messageOf(body, 'Could not disconnect that account');
-      return 'error';
+      const res = await call(this, `${HEADLESS}/account/providers`, { method: 'DELETE', body: { provider, account: uid } });
+      return this.guarded(res, { fallback: 'Could not disconnect that account' });
     },
 
     // ---------------------------------------------------------------- organisations

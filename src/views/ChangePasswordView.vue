@@ -8,16 +8,23 @@
  * Also where a sign-in lands when the password it used is in a breach
  * corpus (§3): the control plane refuses everything else until it changes,
  * and the page says so.
+ *
+ * For an account that holds an authenticator the current password is not
+ * enough (§7.2): the control plane asks for the second factor first, the
+ * sheet proves it, and the change is tried again.
  */
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSession } from '@/stores/session';
+import { useGuarded } from '@/composables/reauth';
 import AuthShell from '@/components/AuthShell.vue';
 import PasswordField from '@/components/PasswordField.vue';
 import Btn from '@/components/Btn.vue';
+import ReauthSheet from '@/components/ReauthSheet.vue';
 
 const session = useSession();
 const router = useRouter();
+const guard = useGuarded();
 
 const current = ref('');
 const next = ref('');
@@ -26,13 +33,16 @@ const done = ref(false);
 
 onMounted(() => { session.error = ''; });
 
-async function submit() {
+async function attempt(run) {
   busy.value = true;
   try {
-    const outcome = await session.changePassword(current.value, next.value);
+    const outcome = await run();
     if (outcome === 'ok') done.value = true;
   } finally { busy.value = false; }
 }
+
+const submit = () => attempt(() => guard.run(() => session.changePassword(current.value, next.value)));
+const proved = () => attempt(() => guard.proved());
 
 async function signOut() {
   await session.logout();
@@ -67,5 +77,6 @@ async function signOut() {
         <RouterLink :to="{ name: 'security' }" class="text-brand-2 underline">Back to security</RouterLink>.
       </template>
     </template>
+    <ReauthSheet v-if="guard.flow.value" :flow="guard.flow.value" @done="proved" @cancel="guard.cancel()" />
   </AuthShell>
 </template>
