@@ -38,7 +38,17 @@ export const useLive = defineStore('live', {
     connected: false,
     url: null,
     origins: [],
-    secrets: [],
+    secrets: [],        // filled by a `secrets` reply, never by the greeting
+    org: null,          // which organisation this socket is, as the runner sees it
+    /**
+     * Who is driving the one browser (docs/AUTH.md §10): `org` is whose page
+     * is on it, `held` whether they still hold the lock, `mine` whether it is
+     * us. Not ours means the canvas shows nothing and the runner says so.
+     */
+    driving: { org: null, held: false, mine: true },
+    // The plan said no: {limit, plan, of}. A view turns it into an upgrade
+    // prompt rather than a red box, and clears it when dismissed.
+    upgrade: null,
     targets: [],
     running: false,
     recording: false,
@@ -80,6 +90,8 @@ export const useLive = defineStore('live', {
   getters: {
     // A run is finished when every step has a verdict or one of them failed.
     lastError: (s) => s.run?.steps.find((x) => x.state === 'fail')?.error ?? null,
+    /** Another organisation has the browser right now. */
+    busy: (s) => s.connected && !!s.driving.org && !s.driving.mine && s.driving.held,
     /**
      * What to send with a run. `undefined` for 'watch' rather than a number:
      * the server's own default is the right answer and it may not be 420.
@@ -229,12 +241,25 @@ export const useLive = defineStore('live', {
     handle(ev) {
       switch (ev.t) {
         case 'ready':
-          this.url = ev.url; this.origins = ev.origins; this.secrets = ev.secrets;
+          // The greeting names the organisation and its origins and says who
+          // is driving; the URL is there only when the page is ours, and the
+          // vault's key names never are (they come from /api/state).
+          this.url = ev.url; this.origins = ev.origins;
+          this.org = ev.org ?? null;
+          if (ev.driving) this.driving = ev.driving;
+          if (ev.url === null) { this.targets = []; this.lastFrame = null; this.painted = false; }
           // Trust the server over whatever we last saw. A socket that dropped
           // mid-run never received run.end, so `running` stayed true here and
           // the Run button was disabled until someone reloaded the page.
           this.running = !!ev.running;
           this.recording = !!ev.recording;
+          break;
+        // The browser changed hands, or was let go. When it is no longer ours
+        // the page on it is someone else's: forget the address, the targets
+        // and the last picture rather than keep showing them.
+        case 'driving':
+          this.driving = { org: ev.org ?? null, held: !!ev.held, mine: !!ev.mine };
+          if (!ev.mine) { this.url = null; this.targets = []; this.lastFrame = null; this.painted = false; this.running = false; }
           break;
         case 'origins': this.origins = ev.origins; break;
         case 'secrets': this.secrets = ev.secrets; break;
@@ -250,9 +275,13 @@ export const useLive = defineStore('live', {
           break;
         // The runner said no to something this socket asked for. The reason
         // arrives as a log line too; this is for a view that wants to offer
-        // the remedy — sign in again — rather than only show the sentence.
+        // the remedy — sign in again, a bigger plan, waiting — rather than
+        // only show the sentence.
         case 'refused':
           if (ev.error === 'step_up_required') this.say('Allowing an origin needs a recent sign-in — sign in again, then retry', 'error');
+          else if (ev.error === 'entitlement') this.upgrade = { limit: ev.limit, plan: ev.plan, of: ev.of };
+          else if (ev.error === 'runner_busy') this.say('Another organisation is driving the runner right now — try again when it is free', 'error');
+          else if (ev.error === 'forbidden') this.say('Only an owner or admin of this organisation can do that', 'error');
           break;
         // The driven page's own console. Capped like the log — a page in a
         // render loop can print faster than anyone can read.

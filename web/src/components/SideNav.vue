@@ -30,6 +30,25 @@ async function signOut() {
   router.replace({ name: 'login' });
 }
 
+/**
+ * Which organisation this session acts for. The control plane checks the
+ * membership and remembers the choice; the socket and the token are dropped
+ * so the next of each is the new organisation's, and the suites in this
+ * sidebar are re-read from its directory.
+ */
+const switching = ref(false);
+async function switchOrg(slug) {
+  if (!slug || slug === session.org?.slug) return;
+  switching.value = true;
+  try {
+    await session.switchOrg(slug);
+    await suites.loadList();
+    router.replace('/suites');
+  } catch (e) { live.say(e.message, 'error'); }
+  finally { switching.value = false; }
+}
+const initial = computed(() => (session.org?.name ?? 'Local').slice(0, 1).toUpperCase());
+
 const openId = computed(() => route.params.id ?? null);
 
 const version = ref(null);
@@ -56,6 +75,7 @@ const ICONS = {
   defects: 'M8 2.6 14.2 13H1.8zM8 6.4v3.1M8 11.3v.5',
   settings:'M8 5.9a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2M8 2.3l1 1.5 1.8-.3.5 1.7 1.6.8-.6 1.7.9 1.6-1.4 1.1v1.8l-1.8.2-1 1.5L8 13l-1 .9-1-1.5-1.8-.2v-1.8L2.8 9.3l.9-1.6-.6-1.7 1.6-.8.5-1.7L7 3.8z',
   security:'M8 2.2 3.2 4v4c0 2.9 2 5 4.8 5.8 2.8-.8 4.8-2.9 4.8-5.8V4zM6 8l1.4 1.4L10.2 6.6',
+  org:     'M5.5 7.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM10.5 7.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM2 13c0-2 1.6-3.3 3.5-3.3S9 11 9 13M7.5 13c0-2 1.3-3.3 3-3.3S14 11 14 13',
 };
 </script>
 
@@ -69,19 +89,33 @@ const ICONS = {
       <span class="text-[15px] font-semibold tracking-tight text-ink">ghost<span class="text-brand">click</span></span>
     </div>
 
-    <!-- Workspace. Where you are, and whether the thing that does the work is
-         actually up — a runner that has quietly died should not need a run to
-         discover. -->
-    <div class="mx-3 mb-5 flex items-center gap-2.5 rounded-xl border border-hairline bg-ground px-3 py-2.5">
-      <span class="grid size-7 shrink-0 place-items-center rounded-lg bg-panel text-[12px] font-semibold
-                   text-ink-2 ring-1 ring-hairline">L</span>
-      <span class="min-w-0">
-        <span class="block truncate text-[13px] font-medium text-ink">Local workspace</span>
-        <span class="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-ink-3">
-          <span class="size-1.5 rounded-full" :class="live.connected ? 'bg-good' : 'bg-critical'" />
-          {{ live.connected ? 'Runner connected' : 'Runner offline' }}
+    <!-- Workspace: the organisation you act for (docs/AUTH.md §10) — every
+         suite, origin and run below is hers — with its plan, and whether the
+         thing that does the work is actually up: a runner that has quietly
+         died should not need a run to discover, and one another organisation
+         is driving should say so here, not on the canvas. -->
+    <div class="mx-3 mb-5 rounded-xl border border-hairline bg-ground px-3 py-2.5">
+      <div class="flex items-center gap-2.5">
+        <span class="grid size-7 shrink-0 place-items-center rounded-lg bg-panel text-[12px] font-semibold
+                     text-ink-2 ring-1 ring-hairline">{{ initial }}</span>
+        <span class="min-w-0 flex-1">
+          <span class="flex items-center gap-1.5">
+            <span class="block truncate text-[13px] font-medium text-ink" :title="session.org?.slug">{{ session.org?.name ?? 'Local workspace' }}</span>
+            <span v-if="session.org?.plan" class="shrink-0 rounded-full bg-brand-50 px-1.5 py-px text-[10.5px] font-medium text-brand-2">{{ session.org.plan }}</span>
+          </span>
+          <span class="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-ink-3">
+            <span class="size-1.5 rounded-full" :class="live.busy ? 'bg-warn' : live.connected ? 'bg-good' : 'bg-critical'" />
+            {{ live.busy ? `Runner busy — ${live.driving.org}` : live.connected ? 'Runner connected' : 'Runner offline' }}
+          </span>
         </span>
-      </span>
+      </div>
+      <!-- A switcher only when there is something to switch to. -->
+      <select v-if="session.orgs.length > 1" :value="session.org?.slug" :disabled="switching"
+              aria-label="Act for another organisation"
+              class="mt-2 w-full rounded-lg border border-hairline bg-panel px-2 py-1 text-[12px] text-ink-2 outline-none focus:border-ink/25"
+              @change="switchOrg($event.target.value)">
+        <option v-for="o in session.orgs" :key="o.slug" :value="o.slug">{{ o.name }} · {{ o.role }}</option>
+      </select>
     </div>
 
     <nav class="flex-1 overflow-y-auto px-3 pb-4">
@@ -157,6 +191,13 @@ const ICONS = {
         </svg>
         Origins &amp; vault
       </RouterLink>
+      <RouterLink v-if="session.required" to="/organisation" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on">
+        <svg viewBox="0 0 16 16" class="size-4 shrink-0" fill="none" stroke="currentColor"
+             stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path :d="ICONS.org" />
+        </svg>
+        Organisation
+      </RouterLink>
       <!-- The account's own settings exist only when there is an account:
            with no control plane there is no password to change. -->
       <RouterLink v-if="session.required" to="/security" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on">
@@ -185,7 +226,7 @@ const ICONS = {
 
     <div class="m-3 rounded-xl border border-hairline bg-ground p-3 text-[12px] leading-relaxed text-ink-2">
       <p class="font-medium text-ink">Suites are project data</p>
-      <p class="mt-1">They live in <code class="rounded bg-ink/[0.05] px-1 py-px font-mono text-[11px]">suites/*.json</code>
+      <p class="mt-1">They live in <code class="rounded bg-ink/[0.05] px-1 py-px font-mono text-[11px]">suites/{{ session.org?.slug ?? 'local' }}/</code>
         and belong in git. Run history stays on this machine.</p>
       <!-- What is actually running. "Am I on the latest?" should be answerable
            by looking, not by remembering whether you pulled and rebuilt. -->

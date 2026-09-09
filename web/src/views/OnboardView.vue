@@ -27,6 +27,7 @@ import { useSuites } from '@/stores/suites';
 import TopBar from '@/components/TopBar.vue';
 import Field from '@/components/Field.vue';
 import StatusPill from '@/components/StatusPill.vue';
+import UpgradePrompt from '@/components/UpgradePrompt.vue';
 
 const router = useRouter();
 const store = useSuites();
@@ -34,6 +35,13 @@ const store = useSuites();
 const step = ref(1);
 const busy = ref(false);
 const error = ref(null);
+const upgrade = ref(null);     // the plan said no: {limit, plan}
+
+/** An error, or — for a 402 — the plan's refusal, which gets a prompt rather than a red box. */
+function failed(e) {
+  if (e.entitlement) upgrade.value = e.entitlement;
+  else error.value = e.message;
+}
 
 const draft = ref({ name: '', baseUrl: '', description: '' });
 const suite = ref(null);
@@ -54,13 +62,13 @@ const origin = computed(() => {
 });
 
 async function createSuite() {
-  busy.value = true; error.value = null;
+  busy.value = true; error.value = null; upgrade.value = null;
   try {
     suite.value = await store.create(draft.value);
     const r = await api.suite(suite.value.id);
     allowed.value = r.allowed;
     step.value = 2;
-  } catch (e) { error.value = e.message; } finally { busy.value = false; }
+  } catch (e) { failed(e); } finally { busy.value = false; }
 }
 
 /**
@@ -68,9 +76,9 @@ async function createSuite() {
  * side effect of typing a URL. Nothing generated can reach it.
  */
 async function allow() {
-  busy.value = true; error.value = null;
+  busy.value = true; error.value = null; upgrade.value = null;
   try { await api.allowOrigin(origin.value); allowed.value = true; }
-  catch (e) { error.value = e.message; } finally { busy.value = false; }
+  catch (e) { failed(e); } finally { busy.value = false; }
 }
 
 async function addPage() {
@@ -206,6 +214,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
     <p v-if="error" class="mb-4 rounded-xl border border-critical/25 bg-critical/5 px-4 py-3 text-[13px] text-critical">
       {{ error }}
     </p>
+    <UpgradePrompt v-if="upgrade" class="mb-4" :limit="upgrade.limit" :plan="upgrade.plan" @dismiss="upgrade = null" />
 
     <!-- 1 ------------------------------------------------------------ -->
     <section v-if="step === 1" class="card p-6">

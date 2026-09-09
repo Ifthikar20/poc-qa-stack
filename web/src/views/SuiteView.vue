@@ -68,7 +68,9 @@ async function runAll() {
     }
   } catch (e) {
     // The gate is a decision, not an error: hand the console the button.
+    // The plan's refusal is a prompt there too, and a busy runner a notice.
     if (e.needsOrigin) live.needsOrigin = { origin: e.needsOrigin };
+    else if (e.entitlement) live.upgrade = { ...e.entitlement, of: 'run' };
     else live.say(e.message, 'error');
   } finally {
     running.value = false;
