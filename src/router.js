@@ -5,6 +5,11 @@ import { useSession } from '@/stores/session';
  * Routes mirror the sidebar, and every one of them is linkable — a suite page
  * you can paste into a ticket is most of what makes this feel like a product
  * rather than a demo.
+ *
+ * `meta.open` marks the pages that render with nobody signed in: sign in, sign
+ * up, the code, the reset, and the invitation landing. The control plane's
+ * mails link straight to them (auth/config/settings.py HEADLESS_FRONTEND_URLS),
+ * so their paths are a contract, not a choice.
  */
 const routes = [
   { path: '/', redirect: '/suites' },
@@ -25,7 +30,17 @@ const routes = [
   { path: '/defects', name: 'defects', component: () => import('@/views/DefectsView.vue') },
   { path: '/console', name: 'console', component: () => import('@/views/ConsoleView.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
-  { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { open: true } },
+
+  // The account pages (docs/AUTH.md §4, §5, §7).
+  { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { open: true, anonymousOnly: true } },
+  { path: '/signup', name: 'signup', component: () => import('@/views/SignupView.vue'), meta: { open: true, anonymousOnly: true } },
+  { path: '/verify', name: 'verify', component: () => import('@/views/VerifyView.vue'), meta: { open: true } },
+  { path: '/forgot-password', name: 'forgot-password', component: () => import('@/views/ForgotPasswordView.vue'), meta: { open: true, anonymousOnly: true } },
+  { path: '/reset-password/:key', name: 'reset-password', component: () => import('@/views/ResetPasswordView.vue'), meta: { open: true } },
+  { path: '/invite', name: 'invite', component: () => import('@/views/InviteView.vue'), meta: { open: true } },
+  { path: '/security', name: 'security', component: () => import('@/views/SecurityView.vue') },
+  { path: '/security/password', name: 'security-password', component: () => import('@/views/ChangePasswordView.vue') },
+  { path: '/security/email', name: 'security-email', component: () => import('@/views/ChangeEmailView.vue') },
   // Where a 403 mfa_required sends you: the account has to enrol an
   // authenticator before the control plane lets it do anything else.
   { path: '/security/mfa', name: 'security-mfa', component: () => import('@/views/SecurityMfaView.vue') },
@@ -47,14 +62,20 @@ const router = createRouter({
  * flash and then get replaced. Waiting once is better than that.
  *
  * With no control plane configured, `required` is false and this is a no-op —
- * the guard never redirects and /login is unreachable.
+ * the guard never redirects and the account pages are unreachable.
  */
 router.beforeEach(async (to) => {
   const session = useSession();
   if (!session.ready) await session.boot();
-  if (!session.required) return to.name === 'login' ? '/suites' : true;
-  if (session.signedIn) return to.name === 'login' ? '/suites' : true;
+  if (!session.required) return to.meta.open ? '/suites' : true;
+  if (session.signedIn) {
+    // The password that signed in is breached: one page, until it changes.
+    if (session.mustChangePassword && to.name !== 'security-password') return { name: 'security-password' };
+    return to.meta.anonymousOnly ? '/suites' : true;
+  }
   if (to.meta.open) return true;
+  // A code is waiting to be entered (a reload mid-sign-up): that screen, not the form.
+  if (session.flow === 'verify_email' && to.name !== 'verify') return { name: 'verify' };
   // Remember where they were going; the form sends them back after.
   return { name: 'login', query: to.fullPath === '/suites' ? {} : { next: to.fullPath } };
 });

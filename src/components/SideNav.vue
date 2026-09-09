@@ -55,6 +55,7 @@ const ICONS = {
   console: 'M2.5 3.5h11v9h-11zM5 7l1.8 1.6L5 10.2M8.8 10.4h2.6',
   defects: 'M8 2.6 14.2 13H1.8zM8 6.4v3.1M8 11.3v.5',
   settings:'M8 5.9a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2M8 2.3l1 1.5 1.8-.3.5 1.7 1.6.8-.6 1.7.9 1.6-1.4 1.1v1.8l-1.8.2-1 1.5L8 13l-1 .9-1-1.5-1.8-.2v-1.8L2.8 9.3l.9-1.6-.6-1.7 1.6-.8.5-1.7L7 3.8z',
+  security:'M8 2.2 3.2 4v4c0 2.9 2 5 4.8 5.8 2.8-.8 4.8-2.9 4.8-5.8V4zM6 8l1.4 1.4L10.2 6.6',
 };
 </script>
 
@@ -155,6 +156,15 @@ const ICONS = {
           <path :d="ICONS.settings" />
         </svg>
         Origins &amp; vault
+      </RouterLink>
+      <!-- The account's own settings exist only when there is an account:
+           with no control plane there is no password to change. -->
+      <RouterLink v-if="session.required" to="/security" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on">
+        <svg viewBox="0 0 16 16" class="size-4 shrink-0" fill="none" stroke="currentColor"
+             stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path :d="ICONS.security" />
+        </svg>
+        Security
       </RouterLink>
     </nav>
 
