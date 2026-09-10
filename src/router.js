@@ -63,7 +63,12 @@ const routes = [
 ];
 
 const router = createRouter({
-  history: createWebHistory('/app/'),
+  // Vite's own `base`, rather than '/app/' written out a second time. The two
+  // have to agree — a router mounted somewhere other than where the bundle's
+  // asset URLs point gives you a blank page and no console error — and the one
+  // place that decides is vite.config.js, which also records why '/app/' is
+  // not this repository's alone to change.
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
   scrollBehavior: () => ({ top: 0 }),
 });
