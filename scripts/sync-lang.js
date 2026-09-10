@@ -1,8 +1,8 @@
 /**
  * Take a fresh copy of the case language from a backend checkout.
  *
- *   npm run sync:lang                       ../backend/vocabulary.js
- *   GC_BACKEND=../ghostclick npm run sync:lang
+ *   npm run sync:lang                       ../poc-qa-stack-backend/vocabulary.js
+ *   GC_BACKEND=../poc-qa-stack-backend npm run sync:lang
  *
  * The backend has the same command and, while both halves were one repository,
  * it wrote this file: `scripts/copies.js` there listed
@@ -26,7 +26,7 @@ if (upstream === null) {
   console.log(`\n  No backend checkout at ${origin}.\n`);
   console.log('  This copy can only be refreshed from the repository that owns the');
   console.log('  original. Clone the backend beside this one, or point GC_BACKEND at it:\n');
-  console.log('      GC_BACKEND=/path/to/ghostclick npm run sync:lang\n');
+  console.log('      GC_BACKEND=/path/to/poc-qa-stack-backend npm run sync:lang\n');
   process.exit(1);
 }
 
@@ -42,7 +42,7 @@ copyFileSync(origin, here(COPY));
 // see that the file moved on purpose rather than under someone's editor.
 const lock = {
   ...JSON.parse(readOr(here(LOCK)) ?? '{}'),
-  source: { repo: 'ghostclick (the backend)', path: ORIGIN },
+  source: { repo: 'poc-qa-stack-backend', path: ORIGIN },
   sha256: digest(upstream),
   syncedAt: new Date().toISOString().slice(0, 10),
 };

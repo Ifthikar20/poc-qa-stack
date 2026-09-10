@@ -142,8 +142,8 @@ alternative to copying is three implementations that agree until they don't.
 **Do not edit it here.** Change it in the backend, land it there, then:
 
 ```bash
-npm run sync:lang                                # looks in ../backend
-GC_BACKEND=/path/to/ghostclick npm run sync:lang # …or wherever it is
+npm run sync:lang                                # looks in ../poc-qa-stack-backend
+GC_BACKEND=/path/to/poc-qa-stack-backend npm run sync:lang # …or wherever it is
 npm test                                         # then look at what changed
 ```
 
@@ -156,7 +156,7 @@ plus the original one whenever a checkout happens to be at hand:
 |---|---|---|
 | `npm run check:lang` | the copy has been **edited here** — its sha256 no longer matches `vocabulary.lock.json` | always, and from `prebuild`, so `npm run build` refuses a hand-edited copy |
 | `npm test` | the copy holds a **verb the console has never been shown** — a row in `VERBS` with no fixture | always |
-| `npm run check:lang`, with a checkout | the copy has **drifted from the original** | `../backend`, or `GC_BACKEND`; skipped, loudly, when absent |
+| `npm run check:lang`, with a checkout | the copy has **drifted from the original** | `../poc-qa-stack-backend`, or `GC_BACKEND`; skipped, loudly, when absent |
 
 The second is the one with teeth in the new shape. A stale copy only ever hurts
 by way of the console rendering a case wrongly, and `test/lang.test.js` renders

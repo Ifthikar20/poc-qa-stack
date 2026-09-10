@@ -1,9 +1,9 @@
 {
   "note": "vocabulary.js beside this file is a copy of the backend's, not this project's own. Do not edit it here: change it in the backend, land it there, then run `npm run sync:lang`, which rewrites this stamp. `npm run check:lang` refuses a copy whose sha256 no longer matches; `npm test` refuses one whose verbs the console has never been shown.",
   "source": {
-    "repo": "ghostclick (the backend)",
+    "repo": "poc-qa-stack-backend",
     "path": "vocabulary.js"
   },
-  "sha256": "ed6c832a150278915f507d09f59ff535b3d60ec60d118560a8b9232f733053d7",
-  "syncedAt": "2026-09-09"
+  "sha256": "bda4ec90fd93f52b60c08199ac30d720c80b51c778f2ea14f108de6fd80b4c58",
+  "syncedAt": "2026-09-10"
 }

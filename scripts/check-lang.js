@@ -30,7 +30,7 @@
  *      to import the module rather than hash it.
  *
  *   3. THE COPY MATCHES THE ORIGINAL — only when a backend checkout is at
- *      hand. Sibling `../backend`, or GC_BACKEND. This is the old check,
+ *      hand. Sibling `../poc-qa-stack-backend`, or GC_BACKEND. This is the old check,
  *      restored exactly when it is possible, and reported as skipped, loudly,
  *      when it is not.
  *

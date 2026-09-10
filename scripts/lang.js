@@ -38,7 +38,7 @@ export const LOCK = 'src/lang/vocabulary.lock.json';
  * neither script requires it to be there.
  */
 export const ORIGIN = 'vocabulary.js';
-export const backendDir = () => process.env.GC_BACKEND || here('../backend');
+export const backendDir = () => process.env.GC_BACKEND || here('../poc-qa-stack-backend');
 
 /** Line-ending-independent content, which is what "identical" has to mean. */
 export const normalize = (text) => text.replace(/\r\n/g, '\n');
