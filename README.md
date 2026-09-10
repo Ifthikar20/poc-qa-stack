@@ -20,9 +20,12 @@ npm run build               # → dist/
 `npm run dev` needs a backend running. It proxies to `http://localhost:3000` by
 default; `GC_API` moves it.
 
-The build is **committed** (`dist/`), because the backend serves it and a tool
-you need a bundler to run is a tool people stop running. `npm start` at the
-repository root rebuilds it when a source file is newer.
+The build is **not committed** — `dist/` is gitignored. It is generated output,
+and committing it meant a one-line change to a component arrived in review as
+itself plus every regenerated bundle, with two people building the same source
+producing a diff. `npm start` at the repository root builds it when it is
+missing or when a source file is newer, so the bundler is a setup step rather
+than something you have to remember.
 
 ## Talking to the backend
 
