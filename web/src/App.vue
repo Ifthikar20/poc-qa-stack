@@ -18,7 +18,13 @@ const route = useRoute();
 // of things that 401 is a broken dashboard, not a sign-in screen.
 const BARE = ['landing', 'login', 'mfa', 'signup', 'verify', 'forgot-password', 'reset-password', 'invite',
               'security-password', 'security-email', 'security-mfa'];
-const shell = computed(() => !BARE.includes(route.name));
+// `route.name` is undefined until the router has matched something, and
+// `BARE.includes(undefined)` is false — so an unresolved route used to read as
+// "not a bare page" and drew the whole dashboard. main.js does not mount until
+// the first navigation resolves, which is the real fix; this makes the shell
+// structurally impossible to draw on a route that does not exist yet, so a
+// later change to how the app mounts cannot quietly bring the flash back.
+const shell = computed(() => !!route.name && !BARE.includes(route.name));
 
 /**
  * Nothing reaches the runner until there is someone to reach it as.

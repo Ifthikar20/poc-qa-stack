@@ -42,10 +42,10 @@ const dur = (ms) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
     <h1 class="display mb-1 text-3xl">Runs</h1>
     <p class="mb-6 text-[14px] text-ink-2">Every case of this suite that has finished, and what stopped it.</p>
 
-    <EmptyState v-if="!data || !data.totals.runs" title="Nothing has run yet"
+    <EmptyState v-if="data && !data.totals.runs" title="Nothing has run yet"
                 body="Press Run suite above and the outcomes land here." />
 
-    <template v-else>
+    <template v-else-if="data">
       <div class="mb-4 grid gap-4 sm:grid-cols-3">
         <StatTile label="Runs" :value="data.totals.runs" :note="`${data.totals.week} this week`" />
         <StatTile label="Passing" :value="data.totals.passRate === null ? '—' : `${Math.round(data.totals.passRate * 100)}%`"

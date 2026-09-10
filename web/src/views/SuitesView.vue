@@ -106,14 +106,14 @@ async function allowAndRetry() {
       </p>
     </HeroPanel>
 
-    <EmptyState v-if="!store.list.length" title="No suites yet"
+    <EmptyState v-if="store.listed && !store.list.length" title="No suites yet"
                 body="Use the field above for a quick look, or set one up properly — name it, add its pages, and choose what has to be true on each.">
       <RouterLink to="/suites/new" class="rounded-full border border-hairline px-4 py-2 text-[13.5px]">
         Set one up properly
       </RouterLink>
     </EmptyState>
 
-    <div v-else class="grid gap-4 sm:grid-cols-2">
+    <div v-else-if="store.list.length" class="grid gap-4 sm:grid-cols-2">
       <RouterLink v-for="s in store.list" :key="s.id" :to="`/suites/${s.id}`"
                   class="card p-5 transition hover:border-ink/25">
         <p class="text-[15px] font-medium">{{ s.name }}</p>
