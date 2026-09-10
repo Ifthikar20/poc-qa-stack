@@ -53,6 +53,9 @@ const nextQuery = computed(() => (safeNext(route.query.next) ? { next: safeNext(
 const providerError = computed(() => String(route.query.error ?? ''));
 const dismissError = () => router.replace({ name: 'login', query: nextQuery.value });
 
+/** The passkey button: when the browser has the API and the operator has not switched passkey sign-in off. */
+const passkeysOn = computed(() => passkeysAvailable() && session.config.passkeys !== false);
+
 async function submit() {
   busy.value = true;
   try {
@@ -103,18 +106,24 @@ async function passkey() {
         Sign in
       </Btn>
 
-      <template v-if="session.config.google || passkeysAvailable()">
+      <!-- Each door only when the browser has it AND the operator has not
+           switched it off (docs/HARDENING.md): a button that is refused on
+           press is worse than no button. -->
+      <template v-if="session.config.google || passkeysOn">
         <p class="flex items-center gap-3 text-[11.5px] uppercase tracking-wide text-ink-3">
           <span class="h-px flex-1 bg-hairline" />or<span class="h-px flex-1 bg-hairline" />
         </p>
-        <Btn v-if="passkeysAvailable()" variant="ghost" :busy="busy" busy-label="Waiting for the passkey…"
+        <Btn v-if="passkeysOn" variant="ghost" :busy="busy" busy-label="Waiting for the passkey…"
              class="w-full justify-center" @click="passkey">Sign in with a passkey</Btn>
         <GoogleButton v-if="session.config.google" process="login" :next="safeNext(route.query.next)" />
       </template>
     </form>
 
     <template #foot>
-      <template v-if="session.config.signup === 'invite'">
+      <template v-if="session.config.signupOff">
+        Sign-up is switched off on this deployment for now.
+      </template>
+      <template v-else-if="session.config.signup === 'invite'">
         Accounts are by invitation. Have one?
         <RouterLink :to="{ name: 'signup', query: nextQuery }" class="text-brand-2 underline">Sign up with the invited address</RouterLink>.
       </template>

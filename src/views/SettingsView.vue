@@ -15,12 +15,20 @@
  * /api/state under the token — never from the greeting. A 402 is the plan
  * saying the list is full, drawn as an upgrade prompt; a 403 forbidden is
  * a member asking for an owner's or admin's change.
+ *
+ * The last card is for when something has gone wrong: which parts of the
+ * runner the operator has switched off for everyone (docs/HARDENING.md), and
+ * whether this browser's requests ask to be logged. Tracing sends a sampled
+ * traceparent with every call, which both servers log under their default
+ * GC_REQUEST_LOG=sampled — one person's session, followed, with nobody
+ * restarting anything and nobody else's requests in the log with it.
  */
 import { onMounted, ref } from 'vue';
 import { api } from '@/api';
 import { useLive } from '@/stores/live';
 import { useSession } from '@/stores/session';
 import { useGuarded } from '@/composables/reauth';
+import { setTracing, traceId, tracing } from '@/trace';
 import TopBar from '@/components/TopBar.vue';
 import Field from '@/components/Field.vue';
 import ReauthSheet from '@/components/ReauthSheet.vue';
@@ -75,6 +83,21 @@ async function remove(o) {
   error.value = null;
   try { const r = await api.removeOrigin(o); live.origins = r.origins; }
   catch (e) { error.value = e.message; }
+}
+
+/** The runner's switches, in the words of what each one stops. */
+const SWITCHES = {
+  'runner.recording': 'Recording a flow',
+  'runner.runs': 'Running scripts and suites',
+  'runner.onboarding': 'Creating suites, pages and scans',
+  'runner.origins': 'Allowing and removing origins',
+  'runner.driving': 'Driving pages from the console',
+};
+
+const tracingOn = ref(tracing());
+function toggleTracing() {
+  tracingOn.value = !tracingOn.value;
+  setTracing(tracingOn.value);
 }
 </script>
 
@@ -145,6 +168,36 @@ async function remove(o) {
         <dt class="text-ink-3">Organisation</dt>
         <dd class="font-mono text-[12px]">{{ state.org }}<template v-if="state.plan"> · {{ state.plan }} plan</template></dd>
       </dl>
+    </section>
+
+    <section class="card mt-4 p-5">
+      <h2 class="text-[15px] font-medium">Diagnostics</h2>
+      <p class="mt-1.5 max-w-xl text-[13px] leading-relaxed text-ink-2">
+        What the operator has turned off for everyone, and whether this browser’s requests ask to be logged.
+      </p>
+      <ul v-if="state" class="mt-4 grid gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-2">
+        <li v-for="(name, key) in SWITCHES" :key="key" class="flex items-center gap-2">
+          <span class="size-1.5 shrink-0 rounded-full" :class="state.switches?.[key] === false ? 'bg-critical' : 'bg-good'" />
+          <span :class="state.switches?.[key] === false ? 'text-ink-3' : 'text-ink'">{{ name }}</span>
+          <span v-if="state.switches?.[key] === false" class="text-[12px] font-medium text-critical">turned off</span>
+        </li>
+      </ul>
+      <div class="mt-5 flex items-start justify-between gap-4 border-t border-hairline pt-4">
+        <div class="min-w-0">
+          <p class="text-[13.5px] font-medium">Trace my requests</p>
+          <p class="mt-1 max-w-md text-[12.5px] leading-relaxed text-ink-3">
+            Asks the runner and the control plane to log every call from this browser, under one trace id —
+            for when something needs looking into. Only this browser, and only while it is on.
+          </p>
+          <p class="mt-1.5 font-mono text-[11.5px] text-ink-3">trace {{ traceId() }}</p>
+        </div>
+        <button type="button" role="switch" :aria-checked="tracingOn" aria-label="Trace my requests"
+                class="relative mt-1 h-6 w-10 shrink-0 rounded-full transition-colors"
+                :class="tracingOn ? 'bg-brand' : 'bg-ink/15'" @click="toggleTracing">
+          <span class="absolute top-0.5 size-5 rounded-full bg-white shadow transition-[left]"
+                :class="tracingOn ? 'left-[18px]' : 'left-0.5'" />
+        </button>
+      </div>
     </section>
   </div>
 

@@ -37,6 +37,7 @@
  */
 import { defineStore } from 'pinia';
 import { authUrl, hasAuth } from '@/config';
+import { traceHeaders } from '@/trace';
 import { useLive } from '@/stores/live';
 import * as webauthn from '@/webauthn';
 
@@ -89,6 +90,9 @@ async function call(store, path, { method = 'GET', body } = {}) {
     // request looks anonymous — the failure that reads as "login did nothing".
     credentials: 'include',
     headers: {
+      // The same request id and trace context the runner's calls carry
+      // (trace.js), so one page load reads as one trace across both services.
+      ...traceHeaders().headers,
       ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
       ...(store.csrf ? { 'X-CSRFToken': store.csrf } : {}),
     },
@@ -104,17 +108,36 @@ async function call(store, path, { method = 'GET', body } = {}) {
   return { status: res.status, body: data };
 }
 
+/**
+ * The words for the control plane's machine-readable refusals, which arrive
+ * as a bare `error` on its own endpoints (allauth's carry a sentence already).
+ * Without these a page printed "switched_off" at somebody.
+ */
+const SWITCHED = {
+  'control.signup': 'Sign-up',
+  'control.invitations': 'Invitations',
+  'control.google': 'Google sign-in',
+  'control.passkeys': 'Passkey sign-in',
+};
+const SAID = {
+  switched_off: (body) => `${SWITCHED[body.switch] ?? 'That'} is switched off on this deployment for now.`,
+  rate_limited: () => 'Too many requests. Wait a moment and try again.',
+};
+
 /** The sentence(s) in an allauth error answer, or a fallback. */
 export function messageOf(body, fallback = 'Something went wrong') {
   const errors = body?.errors;
   if (Array.isArray(errors) && errors.length) return errors.map((e) => e.message).join(' ');
-  if (typeof body?.error === 'string') return body.error;
+  if (typeof body?.error === 'string') return SAID[body.error]?.(body) ?? body.error;
   return fallback;
 }
 
-/** The first error code in an allauth error answer, or ''. */
+/**
+ * The first error code in an allauth error answer — or the bare `error` of
+ * one of the control plane's own, which is the only code those carry.
+ */
 export function codeOf(body) {
-  return body?.errors?.[0]?.code ?? '';
+  return body?.errors?.[0]?.code ?? (typeof body?.error === 'string' ? body.error : '');
 }
 
 /** The pending flow in an allauth 401, or null. */
@@ -179,7 +202,11 @@ export const useSession = defineStore('session', {
     // What the sign-up page needs before anyone types: the mode, the
     // Turnstile site key when there is one, and whether a Google client is
     // configured so "Continue with Google" has somewhere to go (GET /auth/config).
-    config: { signup: 'invite', domains: [], turnstile: null, google: false },
+    // And which doors the operator has switched off for everyone
+    // (docs/HARDENING.md): sign-up, passkey sign-in, invitations. Open until
+    // the control plane says otherwise, the way `google` is closed until it
+    // says a client exists.
+    config: { signup: 'invite', signupOff: false, domains: [], turnstile: null, google: false, passkeys: true, invitations: true },
     // allauth's pending flow after the last call, e.g. 'verify_email' — the
     // router sends the person to the screen that completes it.
     flow: null,

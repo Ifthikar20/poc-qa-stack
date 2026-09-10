@@ -199,7 +199,12 @@ onMounted(load);
         An invitation is mailed to the address, is good for seven days, and becomes a membership
         the moment that address is verified. An admin invites members; an owner invites any role.
       </p>
-      <div class="mt-4 flex flex-wrap items-end gap-2">
+      <!-- Switched off for everyone (docs/HARDENING.md): what was sent is still
+           listed below and can still be revoked, but nothing new goes out. -->
+      <p v-if="session.config.invitations === false" class="mt-4 rounded-lg bg-ink/[0.04] px-3 py-2 text-[12.5px] text-ink-2">
+        Invitations are switched off on this deployment for now.
+      </p>
+      <div v-else class="mt-4 flex flex-wrap items-end gap-2">
         <Field label="Email" class="min-w-56 flex-1">
           <input v-model="invite.email" type="email" placeholder="colleague@acme.example" spellcheck="false" @keyup.enter="sendInvite">
         </Field>

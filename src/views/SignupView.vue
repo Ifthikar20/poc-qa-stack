@@ -13,6 +13,10 @@
  * the account when the identity is new and admitted by the same policy
  * this form is judged by, and a refusal comes back to /login with one
  * sentence (docs/AUTH.md §6).
+ *
+ * An operator can switch sign-up off for everyone (docs/HARDENING.md), and
+ * then there is no form to fill: the page says so rather than taking an
+ * address and a password it is going to refuse.
  */
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -35,11 +39,13 @@ const turnstileToken = ref('');
 const widget = ref(null);
 
 const askTurnstile = computed(() => session.config.signup === 'open' && Boolean(session.config.turnstile));
-const blurb = computed(() => ({
-  invite: 'Sign-up is by invitation: use the address the invitation was sent to.',
-  domain: `Sign up with your ${session.config.domains.map((d) => `@${d}`).join(' or ')} address.`,
-  open: 'A real browser, driven by you, against your own applications.',
-}[session.config.signup] ?? ''));
+const blurb = computed(() => (session.config.signupOff
+  ? 'Sign-up is switched off on this deployment for now.'
+  : {
+    invite: 'Sign-up is by invitation: use the address the invitation was sent to.',
+    domain: `Sign up with your ${session.config.domains.map((d) => `@${d}`).join(' or ')} address.`,
+    open: 'A real browser, driven by you, against your own applications.',
+  }[session.config.signup] ?? ''));
 
 onMounted(() => { session.error = ''; });
 
@@ -56,7 +62,12 @@ async function submit() {
 
 <template>
   <AuthShell title="Create an account" :blurb="blurb">
-    <form class="card mt-6 space-y-4 p-6" @submit.prevent="submit">
+    <div v-if="session.config.signupOff" class="card mt-6 p-6 text-[13.5px] leading-relaxed text-ink-2">
+      No new accounts are being made right now. If you already have one, sign in as usual;
+      if you were invited, the invitation will still be good when sign-up is back.
+    </div>
+
+    <form v-else class="card mt-6 space-y-4 p-6" @submit.prevent="submit">
       <Field label="Email">
         <input v-model="email" type="email" autocomplete="username" required autofocus spellcheck="false"
                placeholder="you@company.com">
@@ -84,7 +95,7 @@ async function submit() {
     </form>
 
     <template #foot>
-      A six-digit code goes to that address; nothing exists until it is entered.
+      <template v-if="!session.config.signupOff">A six-digit code goes to that address; nothing exists until it is entered.</template>
       Already have an account? <RouterLink :to="{ name: 'login' }" class="text-brand-2 underline">Sign in</RouterLink>.
     </template>
   </AuthShell>

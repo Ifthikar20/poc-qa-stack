@@ -4,13 +4,17 @@
  * Every call funnels through `req`, which turns a non-2xx into a thrown Error
  * carrying the server's own message — so a view can `catch (e) { this.error =
  * e.message }` and show the same words the server chose, rather than "Request
- * failed". Five statuses are worth naming on the error object, because each
+ * failed". Seven statuses are worth naming on the error object, because each
  * is the app asking a person for something rather than reporting a fault: a
  * 409 with `needsOrigin` wants a decision, a 409 `runner_busy` wants patience
  * (another organisation has the browser), a 403 `step_up_required` wants a
- * fresh sign-in, a 403 `forbidden` wants an owner or admin, and a 402
- * `entitlement` wants a bigger plan. The view offers the right button — or
- * the right sentence — instead of a red box.
+ * fresh sign-in, a 403 `forbidden` wants an owner or admin, a 403
+ * `switched_off` wants the operator, a 402 `entitlement` wants a bigger plan,
+ * and a 429 wants a pause. The view offers the right button — or the right
+ * sentence — instead of a red box.
+ *
+ * Every request carries an X-Request-Id and a traceparent (trace.js), and
+ * every error carries back the id the server logged it under.
  *
  * Every path goes through `apiUrl`, which is the identity function while the
  * backend serves this app and a real origin once it does not. Writing the
@@ -20,15 +24,18 @@
  */
 import { apiUrl } from '@/config';
 import { useSession } from '@/stores/session';
+import { traceHeaders } from '@/trace';
 
 async function req(path, { method = 'GET', body } = {}) {
   // null whenever there is no control plane, and then no header is sent and
   // the runner — also unauthenticated — does not ask for one.
   const token = await useSession().executorToken().catch(() => null);
+  const { rid, headers: trace } = traceHeaders();
 
   const res = await fetch(apiUrl(path), {
     method,
     headers: {
+      ...trace,
       ...(body ? { 'content-type': 'application/json' } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
@@ -44,6 +51,8 @@ async function req(path, { method = 'GET', body } = {}) {
     if (res.status === 401) useSession().forgetToken();
     const err = new Error(data.error || `${method} ${path} failed (${res.status})`);
     err.status = res.status;
+    // The id this request is logged under: the server's echo, or the one it was sent with.
+    err.requestId = res.headers.get('x-request-id') || rid;
     if (data.needsOrigin) err.needsOrigin = data.needsOrigin;
     // The plan said no (docs/AUTH.md §10): which limit, and which plan it is.
     if (res.status === 402 && data.error === 'entitlement') {
@@ -69,6 +78,19 @@ async function req(path, { method = 'GET', body } = {}) {
       err.stepUp = true;
       err.message = 'Allowing an origin needs a recent sign-in — confirm it is you, then retry';
     }
+    // The operator turned this part of the product off for everyone
+    // (docs/HARDENING.md). Not a plan, not a role: nothing a person can do
+    // about it here, so the sentence says whose it is.
+    if (res.status === 403 && data.error === 'switched_off') {
+      err.switchedOff = data.switch ?? null;
+      err.message = data.message || 'This is turned off on this deployment';
+    }
+    // Too many requests from this address. Retry-After is in seconds.
+    if (res.status === 429) {
+      const wait = Number(res.headers.get('retry-after')) || Number(data.retryAfter) || null;
+      err.retryAfter = wait;
+      err.message = `Too many requests — try again ${wait ? `in ${wait}s` : 'in a moment'}`;
+    }
     throw err;
   }
   return data;
@@ -86,7 +108,7 @@ async function bytes(path) {
   const token = await useSession().executorToken().catch(() => null);
   try {
     const res = await fetch(apiUrl(path), {
-      headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      headers: { ...traceHeaders().headers, ...(token ? { authorization: `Bearer ${token}` } : {}) },
     });
     if (res.status === 401) useSession().forgetToken();
     if (!res.ok) return null;
