@@ -1,0 +1,23 @@
+node_modules/
+*.log
+
+# The build is NOT committed, and that is a decision rather than an oversight.
+#
+# It used to be, back when this directory lived inside the backend's repository
+# and `npm start` there wanted a UI without needing a bundler. The cost was that
+# a one-line change to a component arrived in review as itself plus a wall of
+# regenerated minified bundles, and that two people building the same source
+# produced a diff. Now that the backend is POINTED at a built directory
+# (GC_WEB_DIR) rather than owning one, nothing downstream needs the artefact in
+# git at all: whoever deploys the UI runs `npm run build` and hands over dist/.
+#
+# A checkout with no node_modules cannot build, and says so, rather than serving
+# something silently stale.
+dist/
+
+# Vite inlines every VITE_* variable it finds into the bundle at build time, so
+# a committed .env is somebody's staging API URL baked into everyone else's
+# build. .env.example is the committed one, and it holds no values.
+.env
+.env.*
+!.env.example
