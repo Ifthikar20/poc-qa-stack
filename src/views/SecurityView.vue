@@ -194,8 +194,9 @@ onMounted(load);
     <section v-if="session.config.google" class="card mb-4 p-5">
       <h2 class="text-[15px] font-medium">Connected accounts</h2>
       <p class="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-2">
-        A Google account connected here signs you in as this account. Connecting one is the only
-        way a Google sign-in ever attaches to an existing account; a matching address alone is not.
+        A Google account connected here signs you in as this account. A Google sign-in also opens
+        this account when Google has verified the address, that address is verified here, and no
+        other Google identity is attached — connecting one here is how you attach it deliberately.
       </p>
 
       <ul v-if="accounts.length" class="mt-4 divide-y divide-hairline">
@@ -226,5 +227,5 @@ onMounted(load);
     </section>
   </div>
 
-  <ReauthSheet v-if="guard.flow.value" :flow="guard.flow.value" @done="proved" @cancel="guard.cancel()" />
+  <ReauthSheet v-if="guard.flow.value" :flow="guard.flow.value" @done="proved" @switch="guard.switched" @cancel="guard.cancel()" />
 </template>

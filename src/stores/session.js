@@ -196,6 +196,10 @@ export const useSession = defineStore('session', {
       this.orgs = me?.orgs ?? [];
       this.entitlements = me?.entitlements ?? {};
       this.mfa = me?.mfa ?? ANONYMOUS.mfa;
+      // From the answer, not only from a 403 on the first mint: after a
+      // reload the store used to say `false` until something happened to be
+      // refused, and the router's guard reads this.
+      this.mustChangePassword = Boolean(me?.mustChangePassword);
       this.flags = me?.flags ?? {};
       if (this.user) this.flow = null;
     },
@@ -256,10 +260,42 @@ export const useSession = defineStore('session', {
         this.flow = null;
         return 'anonymous';
       }
+      if (status === 403 && this.blocked(body)) return 'blocked';
       if (status === 409) { this.error = 'That is not possible right now — reload the page and try again.'; return 'error'; }
       if (status === 429) { this.error = 'Too many attempts. Wait a minute and try again.'; return 'error'; }
       this.error = messageOf(body, fallback);
       return 'error';
+    },
+
+    /**
+     * The two 403s the control plane's middleware answers with, routed the
+     * same way `terminal()` routes them on the mint path.
+     *
+     * They are machine-readable words, not sentences: without this branch
+     * `messageOf` fell through to `body.error` and the page rendered the
+     * literal string "password_change_required" at somebody. Reachable in
+     * normal use, because a page reload leaves the store's flags false until
+     * something is refused.
+     *
+     * @returns true when it recognised and routed one.
+     */
+    blocked(body) {
+      const code = codeOf(body);
+      if (code === 'password_change_required') {
+        this.mustChangePassword = true;
+        this.error = '';
+        useLive().disconnect();
+        go({ name: 'security-password' });
+        return true;
+      }
+      if (code === 'mfa_required') {
+        this.mfa = { ...this.mfa, required: true };
+        this.error = '';
+        useLive().disconnect();
+        go({ name: 'security-mfa' });
+        return true;
+      }
+      return false;
     },
 
     // ---------------------------------------------------------------- sign-in / up
@@ -376,6 +412,7 @@ export const useSession = defineStore('session', {
         this.flow = null;
         return 'anonymous';
       }
+      if (status === 403 && this.blocked(body)) return 'blocked';
       this.error = status === 429 ? tooMany : messageOf(body, fallback);
       return 'error';
     },

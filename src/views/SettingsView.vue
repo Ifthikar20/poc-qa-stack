@@ -48,6 +48,11 @@ async function allow() {
   } catch (e) {
     if (e.stepUp) {
       session.forgetToken();
+      // The runner's step-up refusal names no proof, so this is a guess from
+      // what the session last heard. Refreshed first, because enrolling in
+      // another tab makes the cached answer wrong — and the sheet can still
+      // switch if the control plane disagrees (composables/reauth.js).
+      await session.refresh();
       return session.mfa.enrolled ? 'mfa_reauthenticate' : 'reauthenticate';
     }
     if (e.entitlement) { upgrade.value = e.entitlement; return 'error'; }
@@ -143,5 +148,5 @@ async function remove(o) {
     </section>
   </div>
 
-  <ReauthSheet v-if="guard.flow.value" :flow="guard.flow.value" @done="proved" @cancel="guard.cancel()" />
+  <ReauthSheet v-if="guard.flow.value" :flow="guard.flow.value" @done="proved" @switch="guard.switched" @cancel="guard.cancel()" />
 </template>

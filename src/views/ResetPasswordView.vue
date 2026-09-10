@@ -1,6 +1,7 @@
 <script setup>
 /**
- * The reset link lands here with the key in the path (docs/AUTH.md §7).
+ * The reset link lands here with the key in the query (docs/AUTH.md §7).
+ * In the query and not the path so the edge's access log can delete it.
  * A new password, once; the control plane ends every session the account
  * had and does not start one here — the person signs in with the new
  * password, and whatever second factor the account holds still applies.
@@ -25,7 +26,7 @@ onMounted(() => { session.error = ''; });
 async function submit() {
   busy.value = true;
   try {
-    const outcome = await session.resetPassword(String(route.params.key ?? ''), password.value);
+    const outcome = await session.resetPassword(String(route.query.key ?? ''), password.value);
     if (outcome === 'ok') done.value = true;
   } finally { busy.value = false; }
 }

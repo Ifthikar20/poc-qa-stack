@@ -202,6 +202,6 @@ async function signOut() {
       </p>
     </div>
 
-    <ReauthSheet v-if="guard.flow.value" :flow="guard.flow.value" @done="proved" @cancel="guard.cancel()" />
+    <ReauthSheet v-if="guard.flow.value" :flow="guard.flow.value" @done="proved" @switch="guard.switched" @cancel="guard.cancel()" />
   </div>
 </template>

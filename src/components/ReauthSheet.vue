@@ -9,7 +9,7 @@
  *
  * The sheet proves; the view that opened it retries (composables/reauth.js).
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useSession } from '@/stores/session';
 import { passkeysAvailable } from '@/webauthn';
 import PasswordField from '@/components/PasswordField.vue';
@@ -17,7 +17,10 @@ import Field from '@/components/Field.vue';
 import Btn from '@/components/Btn.vue';
 
 const props = defineProps({ flow: { type: String, required: true } });   // 'reauthenticate' | 'mfa_reauthenticate'
-const emit = defineEmits(['done', 'cancel']);
+const emit = defineEmits(['done', 'cancel', 'switch']);
+
+// The outcomes that mean "a different proof, not a wrong answer".
+const WANTS_PROOF = new Set(['reauthenticate', 'mfa_reauthenticate']);
 
 const session = useSession();
 const password = ref('');
@@ -30,15 +33,32 @@ const types = ref(session.reauthTypes ?? []);
 const hasCode = computed(() => types.value.includes('totp') || types.value.includes('recovery_codes'));
 const hasPasskey = computed(() => types.value.includes('webauthn') && passkeysAvailable());
 
-onMounted(async () => {
-  session.error = '';
+async function learnTypes() {
   // A refusal from the control plane names the kinds it will take; a
   // step-up from the runner names nothing, so ask what the account holds.
-  if (strong.value && !types.value.length) types.value = (await session.authenticators()).map((a) => a.type);
+  if (!strong.value) return;
+  types.value = session.reauthTypes?.length
+    ? session.reauthTypes
+    : (await session.authenticators()).map((a) => a.type);
+}
+onMounted(async () => {
+  session.error = '';
+  await learnTypes();
 });
+// The flow can change under this sheet — see the note in composables/reauth.js
+// — and when it does, what the account can prove with has to be re-read.
+watch(() => props.flow, async () => { error.value = ''; await learnTypes(); });
 
 async function finish(outcome) {
   if (outcome === 'ok') { error.value = ''; emit('done'); return; }
+  if (WANTS_PROOF.has(outcome) && outcome !== props.flow) {
+    // Not a rejection: the control plane wants a different proof than this
+    // sheet offered. Saying "that was not accepted" about a correct password
+    // is the one answer that leaves the person stuck.
+    error.value = '';
+    emit('switch', outcome);
+    return;
+  }
   error.value = session.error || 'That was not accepted';
 }
 
