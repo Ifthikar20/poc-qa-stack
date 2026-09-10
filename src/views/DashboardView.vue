@@ -41,14 +41,14 @@ const match = (rows) => rows.filter((r) => (r.suite ?? '').toLowerCase().include
       </p>
     </HeroPanel>
 
-    <EmptyState v-if="!data || !data.totals.runs" title="No runs yet"
+    <EmptyState v-if="data && !data.totals.runs" title="No runs yet"
                 body="Onboard a suite and run it; the outcomes land here." >
       <RouterLink to="/suites/new" class="rounded-full bg-brand hover:bg-brand-2 px-4 py-2 text-[13.5px] font-medium text-white">
         Onboard a project
       </RouterLink>
     </EmptyState>
 
-    <template v-else>
+    <template v-else-if="data">
       <div class="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Runs, 7 days" :value="data.totals.week" :note="`${data.totals.runs} recorded in total`" />
         <StatTile label="Passing" :value="data.totals.passRate === null ? '—' : `${Math.round(data.totals.passRate * 100)}%`"

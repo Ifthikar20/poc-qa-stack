@@ -11,6 +11,11 @@ import { api } from '@/api';
 export const useSuites = defineStore('suites', {
   state: () => ({
     list: [],
+    // Has loadList() answered even once? An empty `list` means two different
+    // things — "none exist" and "we have not asked yet" — and every screen
+    // that draws "No suites yet" was drawing it for the second one, on every
+    // cold load, before the first response arrived.
+    listed: false,
     current: null,      // the full suite, pages and cases included
     allowed: false,     // is the current suite's origin through the gate?
     loading: false,
@@ -26,8 +31,15 @@ export const useSuites = defineStore('suites', {
 
   actions: {
     async loadList() {
-      this.list = (await api.suites()).suites;
-      return this.list;
+      try {
+        this.list = (await api.suites()).suites;
+        return this.list;
+      } finally {
+        // In `finally`: a failed fetch has still told us what we know, which
+        // is "the list is not coming". Leaving `listed` false there would
+        // spin a placeholder forever on a runner that is simply refusing.
+        this.listed = true;
+      }
     },
 
     async load(id) {

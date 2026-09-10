@@ -63,9 +63,28 @@ const HEADLESS = '/_allauth/browser/v1';
  * 400s and 401s carry the answer, so the caller reads {status, body} and
  * decides. Throws only when there was no answer at all.
  */
+/**
+ * How long a control-plane request may take before we treat it as not coming.
+ *
+ * `fetch` has no timeout of its own: a host that accepts the connection and
+ * then says nothing keeps the promise pending for as long as the socket stays
+ * open, which on a wedged or half-deployed control plane is indefinitely.
+ * Every screen in this app waits on boot(), which is two of these, so without
+ * a clock a wedged control plane is a permanently blank page rather than a
+ * sign-in form that says something is wrong.
+ *
+ * Twelve seconds: long enough for a cold Django worker and a slow link, short
+ * enough that nobody sits looking at nothing wondering whether to reload.
+ */
+const CALL_TIMEOUT_MS = 12_000;
+
 async function call(store, path, { method = 'GET', body } = {}) {
   const res = await fetch(authUrl(path), {
     method,
+    // AbortSignal.timeout rejects with a TimeoutError, which every caller
+    // already handles the same way it handles a refused connection: as "the
+    // control plane did not answer".
+    signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
     // Without this the session cookie is not sent cross-origin and every
     // request looks anonymous — the failure that reads as "login did nothing".
     credentials: 'include',

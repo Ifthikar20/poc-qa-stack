@@ -172,7 +172,7 @@ const ICONS = {
                            hover:bg-ink/[0.05] hover:text-ink">+</RouterLink>
       </div>
 
-      <p v-if="!suites.list.length && !rail" class="px-2 py-1.5 text-[12.5px] text-ink-3">
+      <p v-if="suites.listed && !suites.list.length && !rail" class="px-2 py-1.5 text-[12.5px] text-ink-3">
         None yet — <RouterLink to="/suites/new" class="text-brand-2 underline underline-offset-2">onboard one</RouterLink>.
       </p>
 
