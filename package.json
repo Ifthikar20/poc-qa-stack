@@ -6,8 +6,12 @@
   "description": "ghostclick's UI. A Vite + Vue app that talks to the ghostclick backend over HTTP and one WebSocket.",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/check-lang.js --local",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test \"test/**/*.test.js\"",
+    "check:lang": "node scripts/check-lang.js",
+    "sync:lang": "node scripts/sync-lang.js"
   },
   "dependencies": {
     "pinia": "^4.0.3",
