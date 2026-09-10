@@ -18,6 +18,8 @@ import { api } from '@/api';
 import { useLive } from '@/stores/live';
 import { showAction, labelAction } from '@lang';
 import { useSuites } from '@/stores/suites';
+import { useUi } from '@/stores/ui';
+import { clock, countLevels, filterLogs, foldLogs, LEVELS, mergeLogs, whereFrom } from '@/logview';
 import TopBar from '@/components/TopBar.vue';
 import Field from '@/components/Field.vue';
 import FlowBox from '@/components/FlowBox.vue';
@@ -48,6 +50,167 @@ const currentNav = computed(() => {
 const route = useRoute();
 const live = useLive();
 const suites = useSuites();
+const ui = useUi();
+
+// -------------------------------------------------------------------- dock
+/**
+ * The dock along the bottom: the run as it happens, and what the driven page
+ * printed. Tabs, because those are the two things you read when a step fails;
+ * docked, because the run used to be a card in the rail — below the fold, out
+ * of sight of the canvas it was describing.
+ *
+ * A run starting brings its tab forward and opens the dock, even one you
+ * folded: watching the steps land is why you pressed Run.
+ */
+const DOCK_TABS = ['run', 'console'];
+const dockPanel = ref(null);
+const runList = ref(null);
+const logList = ref(null);
+
+/** The Run tab's badge: still going, or how the last run ended. */
+const runState = computed(() => {
+  const run = live.run;
+  if (!run) return null;
+  if (live.running) return { tone: 'live', text: 'running' };
+  if (run.steps.some((s) => s.state === 'fail')) return { tone: 'fail', text: 'failed' };
+  return { tone: 'pass', text: `${run.steps.filter((s) => s.state === 'pass').length}/${run.total}` };
+});
+
+/**
+ * Follow the running step down the list — a recorded flow is taller than the
+ * dock — unless you have scrolled away from it to read something, when being
+ * dragged back on every step is worse than scrolling down yourself.
+ *
+ * With nothing running, the step that failed is the one followed. Its error
+ * arrives after it stopped running and makes the row taller, so following
+ * only the running step left that error just under the fold — the one line
+ * the run produced that you actually came to read.
+ */
+let following = true;
+const activeRow = () => {
+  const box = runList.value;
+  return box?.querySelector('[data-state="run"]') ?? [...(box?.querySelectorAll('[data-state="fail"]') ?? [])].at(-1);
+};
+const inView = (row, box) => row.offsetTop >= box.scrollTop - 1
+  && row.offsetTop + row.offsetHeight <= box.scrollTop + box.clientHeight + 1;
+function onRunScroll() {
+  const row = activeRow();
+  if (row) following = inView(row, runList.value);
+}
+watch(() => live.run, (run, before) => {
+  if (!run || run === before) return;
+  following = true;
+  if (runList.value) runList.value.scrollTop = 0;
+  ui.reveal('run');
+});
+watch(() => live.run?.steps.map((s) => s.state).join(), () => {
+  const box = runList.value;
+  const row = activeRow();
+  if (!box || !row || !following || inView(row, box)) return;
+  // Bottom of the row into view — but never its top out of it, for an error
+  // longer than the dock is tall.
+  box.scrollTop = Math.min(row.offsetTop, row.offsetTop + row.offsetHeight - box.clientHeight);
+}, { flush: 'post' });
+
+/**
+ * The Browser console tab: everything the driven page printed and everything
+ * the runner said while driving it, as one live stream — filtered the way
+ * DevTools filters, by level, by where a line came from, and by its text.
+ *
+ * Live means pinned to the newest line while you are at the bottom, and left
+ * where you put it once you scroll up to read, with a count of what arrived
+ * meanwhile — not a list moving under the line you were reading.
+ */
+const LEVEL_NAMES = { error: 'Errors', warn: 'Warnings', info: 'Info', debug: 'Debug' };
+const LEVEL_ON = {
+  error: 'bg-critical/10 font-medium text-critical', warn: 'bg-warn/10 font-medium text-warn',
+  info: 'bg-ink/[0.07] font-medium text-ink', debug: 'bg-ink/[0.07] font-medium text-ink-2',
+};
+const LEVEL_TEXT = { error: 'text-critical', warn: 'text-warn', info: 'text-ink-3', debug: 'text-ink-3' };
+const ROW_TINT = { error: 'bg-critical/[0.04]', warn: 'bg-warn/[0.06]' };
+const ROW_TEXT = { error: 'text-critical', warn: 'text-warn', info: 'text-ink', debug: 'text-ink-3' };
+const SOURCES = [['all', 'All'], ['page', 'Page'], ['runner', 'Runner']];
+const SHOWN = 500;                  // rows drawn at once; anything older is a filter away
+
+const logLevels = ref([]);          // none picked: every level
+const logSource = ref('all');
+const logQuery = ref('');
+
+const logRows = computed(() => filterLogs(mergeLogs(live.console, live.log), { since: live.consoleSince }));
+const levelCounts = computed(() => countLevels(filterLogs(logRows.value, { source: logSource.value, query: logQuery.value })));
+const logMatches = computed(() => foldLogs(filterLogs(logRows.value, {
+  levels: logLevels.value, source: logSource.value, query: logQuery.value,
+})));
+const logShown = computed(() => logMatches.value.slice(-SHOWN));
+/** Errors are the reason to look, so their count rides on the tab — open or folded. */
+const logErrors = computed(() => logRows.value.filter((r) => r.level === 'error').length);
+
+function toggleLevel(level) {
+  logLevels.value = logLevels.value.includes(level)
+    ? logLevels.value.filter((l) => l !== level)
+    : [...logLevels.value, level];
+}
+
+let pinned = true;
+const unseen = ref(0);
+function onLogScroll() {
+  const box = logList.value;
+  if (!box) return;
+  pinned = box.scrollTop + box.clientHeight >= box.scrollHeight - 24;
+  if (pinned) unseen.value = 0;
+}
+function toLatest() {
+  if (logList.value) logList.value.scrollTop = logList.value.scrollHeight;
+  pinned = true;
+  unseen.value = 0;
+}
+/** Hides what is there now, here only: the rail's log and the store keep every line. */
+function clearLogs() {
+  live.consoleSince = Date.now();
+  toLatest();
+}
+/** A new last line, or one more of it: followed if you were following, counted if you were not. */
+const tail = computed(() => {
+  const last = logMatches.value.at(-1);
+  return { key: last ? `${last.id}:${last.n}` : '', total: logMatches.value.reduce((n, r) => n + r.n, 0) };
+});
+watch(tail, (now, before) => {
+  if (!now.key || now.key === before?.key) return;
+  if (pinned) toLatest();
+  else unseen.value += Math.max(1, now.total - (before?.total ?? 0));
+}, { flush: 'post' });
+// A different filter, or the tab coming into view, starts at the newest line.
+watch([logLevels, logSource, logQuery, () => ui.dockOpen && ui.dockTab === 'console'], toLatest, { flush: 'post' });
+
+/**
+ * Drag the dock's top edge to size it, or focus it and use the arrow keys. The
+ * height is kept when the drag ends rather than on every move: one gesture is
+ * one write, not sixty a second.
+ */
+function resizeDock(e) {
+  const handle = e.currentTarget;
+  const from = { y: e.clientY, h: dockPanel.value?.offsetHeight ?? ui.dockHeight };
+  handle.setPointerCapture(e.pointerId);
+  const move = (m) => ui.sizeDock(from.h + from.y - m.clientY);
+  const done = () => {
+    handle.removeEventListener('pointermove', move);
+    handle.removeEventListener('lostpointercapture', done);
+    ui.keepDock();
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('lostpointercapture', done);
+}
+function nudgeDock(by) {
+  ui.sizeDock((dockPanel.value?.offsetHeight ?? ui.dockHeight) + by);
+  ui.keepDock();
+}
+
+/** Arrow keys move between the tabs, as they do in any tablist. */
+function dockKey(by) {
+  const next = DOCK_TABS[(DOCK_TABS.indexOf(ui.dockTab) + by + DOCK_TABS.length) % DOCK_TABS.length];
+  ui.reveal(next);
+  document.getElementById(`dock-tab-${next}`)?.focus();
+}
 
 const canvas = ref(null);
 const wrap = ref(null);
@@ -136,8 +299,43 @@ const waiting = computed(() => {
     return { title: 'Nothing open yet', body: 'Paste a URL above and press Open, or run a suite — the runner shows whatever it is driving.' };
   }
   if (live.painted) return null;
-  return { title: 'Waiting for the first frame', body: 'The runner streams a frame whenever the page changes. If it is sitting still this can take a moment.' };
+  return { title: 'Loading the page', body: 'The runner’s browser is drawing it — the picture appears here the moment there is one.' };
 });
+
+/**
+ * Whether the canvas is waiting on something that is actually happening — the
+ * socket, a page opening, a first picture — which is when a loading bar
+ * belongs. "Nothing open" and "someone else is driving" are states, not loads,
+ * and a spinner over them promised a wait with no end.
+ */
+const loading = computed(() => !!waiting.value && !live.busy
+  && (!live.connected || !!opening.value || (!!live.url && live.url !== 'about:blank')));
+
+/**
+ * Keep asking for a picture until one arrives. Frames are damage-driven, so a
+ * page that finished loading before anyone watched, and then sits still, sends
+ * nothing on its own; the runner answers each request with the frame it holds,
+ * or takes one. This replaced a button that made the person do the asking.
+ *
+ * Not while a page is opening: the frame held then is the PREVIOUS page, and
+ * painting it would end the loading state on the wrong picture. An open that
+ * has drawn nothing in five seconds stops counting as opening, and the asking
+ * starts.
+ */
+let asking = null;
+let openTimer = null;
+watch(() => live.connected && !live.busy && !opening.value && !!live.url && live.url !== 'about:blank' && !live.painted, (want) => {
+  clearInterval(asking);
+  asking = null;
+  if (!want) return;
+  live.send({ t: 'frame.request' });
+  asking = setInterval(() => live.send({ t: 'frame.request' }), 1000);
+}, { immediate: true });
+watch(opening, (now) => {
+  clearTimeout(openTimer);
+  if (now) openTimer = setTimeout(() => { if (opening.value === now) opening.value = null; }, 5000);
+});
+onBeforeUnmount(() => { clearInterval(asking); clearTimeout(openTimer); });
 
 // ------------------------------------------------------------- interaction
 /** Canvas pixels, not CSS pixels — the element is scaled to fit. */
@@ -285,14 +483,6 @@ const fold = (rows, same) => {
 };
 const logLines = computed(() => fold(live.log, (a, b) => a.msg === b.msg && a.level === b.level));
 
-/**
- * The driven page's console, folded the same way. A render loop that logs on
- * every frame is one line with a count, not four hundred lines.
- */
-const consoleLines = computed(() => fold(live.console, (a, b) => a.text === b.text && a.level === b.level));
-/** Errors are the reason to look, so the count is on the collapsed header. */
-const consoleErrors = computed(() => live.console.filter((l) => l.level === 'error').length);
-
 /** Reopening the same page four times is one fact, not four. */
 const navLines = computed(() => fold(live.navs, (a, b) =>
   a.url === b.url && a.status === b.status && a.redirects === b.redirects));
@@ -395,7 +585,9 @@ watch(() => live.recordedFlow, (f) => {
     </template>
   </TopBar>
 
-  <div class="grid gap-5 px-6 py-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+  <!-- minmax(0,1fr) below xl too: a bare `grid` sizes its one column to the
+       widest unbreakable thing inside it, and a URL in the log is one. -->
+  <div class="grid grid-cols-[minmax(0,1fr)] gap-5 px-6 py-6 xl:grid-cols-[minmax(0,1fr)_380px]">
     <!-- stage -------------------------------------------------------- -->
     <div>
       <!-- The chrome the canvas does not have. A video of a browser shows you
@@ -416,19 +608,21 @@ watch(() => live.recordedFlow, (f) => {
                 stroke-width="1.6" stroke-linejoin="round" />
         </svg>
 
-        <!-- Never a bare black rectangle: it is indistinguishable from a crash. -->
+        <!-- Never a bare black rectangle: it is indistinguishable from a crash.
+             The bar and the spinner only while something is actually loading,
+             and no button: the console keeps asking for the picture itself. -->
         <div v-if="waiting"
              class="absolute inset-0 grid place-content-center gap-3 justify-items-center bg-night px-8 text-center">
-          <svg class="size-7 animate-spin text-white/70" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <div v-if="loading" class="absolute inset-x-0 top-0 h-0.5 overflow-hidden bg-white/10"
+               role="progressbar" aria-label="Loading the page">
+            <div class="h-full w-1/3 animate-[stage-load_1.2s_ease-in-out_infinite] bg-brand motion-reduce:w-full motion-reduce:animate-none" />
+          </div>
+          <svg v-if="loading" class="size-7 animate-spin text-white/70 motion-reduce:animate-none" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".22" />
             <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
           </svg>
-          <p class="text-[14px] font-medium text-white">{{ waiting.title }}</p>
+          <p class="text-[14px] font-medium text-white" aria-live="polite">{{ waiting.title }}</p>
           <p class="max-w-sm text-[12.5px] leading-relaxed text-white/55">{{ waiting.body }}</p>
-          <button v-if="live.connected" class="mt-1 rounded-full border border-white/20 px-3.5 py-1.5 text-[12.5px] text-white/80 hover:bg-white/10"
-                  @click="live.send({ t: 'frame.request' })">
-            Ask for a frame
-          </button>
         </div>
       </div>
 
@@ -439,8 +633,12 @@ watch(() => live.recordedFlow, (f) => {
                @keyup.enter="open">
         <Btn :busy="!!opening" busy-label="Opening…" @click="open">Open</Btn>
         <Btn variant="ghost" @click="live.send({ t: 'inspect' })">Re-scan</Btn>
-        <button v-if="!live.recording" class="rounded-full border border-critical/40 px-4 py-2 text-[13px] text-critical"
-                :disabled="live.running" @click="record">● Record</button>
+        <!-- An operator's switch (docs/HARDENING.md) disables it here as well as
+             refusing it on the runner, and says why on hover. -->
+        <button v-if="!live.recording" class="rounded-full border border-critical/40 px-4 py-2 text-[13px] text-critical disabled:border-hairline disabled:text-ink-3"
+                :disabled="live.running || live.switches['runner.recording'] === false"
+                :title="live.switches['runner.recording'] === false ? 'Recording is turned off on this deployment' : undefined"
+                @click="record">● Record</button>
         <button v-else class="rounded-full bg-critical px-4 py-2 text-[13px] font-medium text-white" @click="stop">■ Stop</button>
       </div>
 
@@ -507,7 +705,9 @@ watch(() => live.recordedFlow, (f) => {
           </div>
 
           <Btn :busy="live.running" busy-label="Running…"
-               :disabled="!script.trim()" @click="run">Run script</Btn>
+               :disabled="!script.trim() || live.switches['runner.runs'] === false"
+               :title="live.switches['runner.runs'] === false ? 'Running is turned off on this deployment' : undefined"
+               @click="run">Run script</Btn>
         </div>
         <p v-if="loaded" class="mt-2 flex items-center gap-2 text-[12.5px] text-ink-3">
           Loaded <b class="font-medium text-ink">{{ loaded.name }}</b>
@@ -516,45 +716,10 @@ watch(() => live.recordedFlow, (f) => {
         </p>
         <FlowBox v-model="script" :rows="10" class="mt-3" />
       </section>
-
-      <!-- The console of the page you are driving, not of this one. It sits
-           under the script because that is where you are when a step fails and
-           you want to know what the app itself said about it. Folded away by
-           default: an app that logs on every render would otherwise be the
-           whole screen. -->
-      <section class="card mt-4 p-5">
-        <div class="flex flex-wrap items-center gap-3">
-          <h2 class="text-[15px] font-medium">Browser console</h2>
-          <span class="text-[13px] text-ink-3">What the page you are driving printed.</span>
-          <span v-if="consoleErrors" class="rounded-full bg-critical/10 px-2 py-0.5 text-[12px] font-medium text-critical">
-            {{ consoleErrors }} error{{ consoleErrors === 1 ? '' : 's' }}
-          </span>
-          <button class="ml-auto rounded-full border border-hairline px-3.5 py-1.5 text-[13px] hover:border-ink/25"
-                  @click="live.showConsole = !live.showConsole">
-            {{ live.showConsole ? 'Hide' : 'Show' }}
-            <span class="text-ink-3">{{ consoleLines.length }}</span>
-          </button>
-          <button v-if="live.showConsole && live.console.length"
-                  class="text-[12.5px] text-ink-3 underline hover:text-ink" @click="live.console = []">clear</button>
-        </div>
-
-        <ul v-if="live.showConsole" class="mt-3 max-h-72 space-y-1 overflow-y-auto font-mono text-[11.5px]">
-          <li v-for="l in consoleLines" :key="l.id" class="flex gap-2"
-              :class="{ error: 'text-critical', warn: 'text-warn', debug: 'text-ink-3' }[l.level] ?? 'text-ink-2'">
-            <span class="w-11 shrink-0 text-right text-ink-3">{{ l.level }}</span>
-            <span class="min-w-0 grow whitespace-pre-wrap break-words">{{ l.text }}</span>
-            <span v-if="l.n > 1" class="shrink-0 rounded bg-ink/[0.07] px-1.5 text-[10.5px] text-ink-2"
-                  :title="`printed ${l.n} times in a row`">×{{ l.n }}</span>
-          </li>
-          <li v-if="!consoleLines.length" class="text-ink-3">
-            Nothing printed yet. Anything the page logs — including an uncaught error — lands here.
-          </li>
-        </ul>
-      </section>
     </div>
 
     <!-- rail --------------------------------------------------------- -->
-    <div class="grid content-start gap-4">
+    <div class="grid content-start grid-cols-[minmax(0,1fr)] gap-4">
       <!-- First in the rail. It is where anything that went wrong says so, and
            it should not be below a list of everything that did not. -->
       <section class="card p-5">
@@ -601,26 +766,6 @@ watch(() => live.recordedFlow, (f) => {
         <p v-else-if="!suiteId && live.recordedFlow" class="mt-3 text-[12.5px] text-ink-3">
           Open the console from a suite to save this straight into it.
         </p>
-      </section>
-
-      <section v-if="live.run" class="card p-5">
-        <div class="flex items-baseline gap-2">
-          <h2 class="text-[15px] font-medium">Run</h2>
-          <span class="text-[13px] text-ink-3">{{ live.run.suite }}</span>
-        </div>
-        <ol class="mt-3 space-y-1 font-mono text-[12px]">
-          <li v-for="s in live.run.steps" :key="s.i" class="flex gap-2">
-            <span class="w-5 shrink-0 text-right text-ink-3">{{ s.i }}</span>
-            <span class="w-4 shrink-0" :class="{ 'text-good': s.state === 'pass', 'text-critical': s.state === 'fail' }">
-              {{ { pass: '✓', fail: '✕', run: '·', idle: ' ' }[s.state] }}
-            </span>
-            <span class="min-w-0 flex-1" :class="s.state === 'fail' && 'text-critical'">
-              {{ s.step ? describe(s.step) : '' }}
-              <span v-if="s.error" class="block text-ink-2">{{ s.error }}</span>
-            </span>
-            <span v-if="s.ms !== null" class="shrink-0 tabular-nums text-ink-3">{{ s.ms }}ms</span>
-          </li>
-        </ol>
       </section>
 
       <section class="card p-5">
@@ -693,4 +838,147 @@ watch(() => live.recordedFlow, (f) => {
   <p v-if="error" class="mx-6 mb-6 rounded-xl border border-critical/25 bg-critical/5 px-4 py-3 text-[13px] text-critical">
     {{ error }}
   </p>
+
+  <!-- dock ---------------------------------------------------------- -->
+  <!-- Last in the page and sticky to the bottom of <main> rather than fixed:
+       always in reach while you scroll, but scrolled to the end it sets down
+       under the last card instead of covering it. -->
+  <section class="sticky bottom-0 z-10 border-t border-hairline bg-panel shadow-[0_-8px_24px_-16px_rgb(16_16_20/0.25)]"
+           aria-label="Run and browser console">
+    <div v-if="ui.dockOpen" role="separator" aria-orientation="horizontal" tabindex="0"
+         aria-label="Resize the panel" :aria-valuenow="ui.dockHeight" aria-valuemin="96" title="Drag to resize"
+         class="absolute inset-x-0 -top-1 z-10 h-2 cursor-row-resize touch-none hover:bg-brand/25 focus-visible:bg-brand/35 focus-visible:outline-none"
+         @pointerdown.prevent="resizeDock" @keydown.up.prevent="nudgeDock(24)" @keydown.down.prevent="nudgeDock(-24)" />
+
+    <div class="flex items-center gap-2 px-6">
+      <div role="tablist" aria-label="Panel" class="flex shrink-0 items-center gap-1"
+           @keydown.left.prevent="dockKey(-1)" @keydown.right.prevent="dockKey(1)">
+        <button id="dock-tab-run" type="button" role="tab" aria-controls="dock-panel"
+                :aria-selected="ui.dockTab === 'run'" :tabindex="ui.dockTab === 'run' ? 0 : -1"
+                class="flex items-center gap-2 whitespace-nowrap border-b-2 px-2.5 py-2.5 text-[13px]"
+                :class="ui.dockOpen && ui.dockTab === 'run' ? 'border-brand font-medium text-ink' : 'border-transparent text-ink-3 hover:text-ink'"
+                @click="ui.showDock('run')">
+          Run
+          <span v-if="runState" class="flex items-center gap-1 rounded-full px-1.5 py-px text-[11px] font-medium tabular-nums"
+                :class="{ live: 'bg-brand-50 text-brand-2', pass: 'bg-good/10 text-good', fail: 'bg-critical/10 text-critical' }[runState.tone]">
+            <span v-if="runState.tone === 'live'" class="size-1.5 animate-pulse rounded-full bg-brand" />
+            {{ runState.text }}
+          </span>
+        </button>
+        <button id="dock-tab-console" type="button" role="tab" aria-controls="dock-panel"
+                :aria-selected="ui.dockTab === 'console'" :tabindex="ui.dockTab === 'console' ? 0 : -1"
+                class="flex items-center gap-2 whitespace-nowrap border-b-2 px-2.5 py-2.5 text-[13px]"
+                :class="ui.dockOpen && ui.dockTab === 'console' ? 'border-brand font-medium text-ink' : 'border-transparent text-ink-3 hover:text-ink'"
+                @click="ui.showDock('console')">
+          Browser console
+          <span v-if="logErrors" class="rounded-full bg-critical/10 px-1.5 py-px text-[11px] font-medium tabular-nums text-critical"
+                :title="`${logErrors} error${logErrors === 1 ? '' : 's'}`">{{ logErrors }}</span>
+          <span v-else-if="logRows.length" class="text-[11.5px] tabular-nums text-ink-3">{{ logRows.length }}</span>
+        </button>
+      </div>
+
+      <p v-if="ui.dockOpen && ui.dockTab === 'run' && live.run" class="ml-2 min-w-0 truncate text-[12.5px] text-ink-3"
+         :title="live.run.caseName ? `${live.run.suite} — ${live.run.caseName}` : live.run.suite">
+        {{ live.run.caseName ?? live.run.suite }}
+      </p>
+      <p v-else-if="ui.dockOpen && ui.dockTab === 'console'" class="ml-2 hidden min-w-0 truncate text-[12.5px] text-ink-3 md:block">
+        Everything the page printed and the runner said, as it happens.
+      </p>
+
+      <div class="ml-auto flex shrink-0 items-center gap-1">
+        <button v-if="ui.dockOpen && ui.dockTab === 'console' && logRows.length" type="button"
+                class="rounded-md px-2 py-1 text-[12.5px] text-ink-3 hover:bg-ink/[0.05] hover:text-ink"
+                @click="clearLogs">Clear</button>
+        <button type="button" :aria-expanded="ui.dockOpen" aria-controls="dock-panel"
+                :aria-label="ui.dockOpen ? 'Hide the panel' : 'Show the panel'"
+                :title="ui.dockOpen ? 'Hide the panel' : 'Show the panel'"
+                class="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-ink/[0.05] hover:text-ink"
+                @click="ui.toggleDock()">
+          <svg viewBox="0 0 16 16" class="size-4 transition-transform" :class="!ui.dockOpen && 'rotate-180'"
+               fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4.5 6.5 8 10l3.5-3.5" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div v-if="ui.dockOpen" id="dock-panel" ref="dockPanel" role="tabpanel"
+         :aria-labelledby="`dock-tab-${ui.dockTab}`"
+         class="relative flex max-h-[60vh] flex-col border-t border-hairline"
+         :style="{ height: `${ui.dockHeight}px` }">
+      <div v-if="ui.dockTab === 'run'" ref="runList"
+           class="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-3" @scroll.passive="onRunScroll">
+        <ol v-if="live.run" class="space-y-1 font-mono text-[12px]">
+          <li v-for="s in live.run.steps" :key="s.i" :data-state="s.state" class="flex gap-2 rounded px-1"
+              :class="s.state === 'run' && 'bg-brand-50'">
+            <span class="w-5 shrink-0 text-right text-ink-3">{{ s.i }}</span>
+            <span class="w-4 shrink-0" :class="{ 'text-good': s.state === 'pass', 'text-critical': s.state === 'fail' }">
+              {{ { pass: '✓', fail: '✕', run: '·', idle: ' ' }[s.state] }}
+            </span>
+            <span class="min-w-0 flex-1" :class="s.state === 'fail' ? 'text-critical' : 'text-ink-2'">
+              {{ s.step ? describe(s.step) : '' }}
+              <span v-if="s.error" class="block whitespace-pre-wrap text-ink-2">{{ s.error }}</span>
+            </span>
+            <span v-if="s.ms !== null" class="shrink-0 tabular-nums text-ink-3">{{ s.ms }}ms</span>
+          </li>
+        </ol>
+        <p v-else class="text-[12.5px] text-ink-3">
+          No run yet. Press <b class="font-medium text-ink-2">Run script</b> and each step lands here as it happens.
+        </p>
+      </div>
+
+      <template v-else>
+        <!-- DevTools' filter bar, cut down to what a failing step needs: which
+             levels, whose lines, and a word to find. -->
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-hairline px-6 py-1.5">
+          <div class="flex flex-wrap items-center gap-1" role="group" aria-label="Levels">
+            <button type="button" class="rounded-md px-2 py-0.5 text-[12px]" :aria-pressed="!logLevels.length"
+                    :class="!logLevels.length ? 'bg-ink/[0.07] font-medium text-ink' : 'text-ink-3 hover:bg-ink/[0.04] hover:text-ink'"
+                    @click="logLevels = []">All levels</button>
+            <button v-for="level in LEVELS" :key="level" type="button" :aria-pressed="logLevels.includes(level)"
+                    class="flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[12px]"
+                    :class="logLevels.includes(level) ? LEVEL_ON[level] : 'text-ink-3 hover:bg-ink/[0.04] hover:text-ink'"
+                    @click="toggleLevel(level)">
+              {{ LEVEL_NAMES[level] }}
+              <span class="tabular-nums" :class="levelCounts[level] ? LEVEL_TEXT[level] : 'text-ink-3/60'">{{ levelCounts[level] }}</span>
+            </button>
+          </div>
+          <div class="flex overflow-hidden rounded-md border border-hairline text-[12px]" role="group" aria-label="From">
+            <button v-for="[id, label] in SOURCES" :key="id" type="button" class="px-2 py-0.5" :aria-pressed="logSource === id"
+                    :class="logSource === id ? 'bg-brand-50 font-medium text-brand-2' : 'text-ink-3 hover:bg-ink/[0.04]'"
+                    @click="logSource = id">{{ label }}</button>
+          </div>
+          <input v-model="logQuery" type="search" placeholder="Filter text" aria-label="Filter the log by text" spellcheck="false"
+                 class="ml-auto w-48 min-w-0 rounded-md border border-hairline bg-ground px-2 py-0.5 text-[12px] outline-none focus:border-ink/25">
+        </div>
+
+        <div ref="logList" class="relative min-h-0 flex-1 overflow-y-auto overscroll-contain" @scroll.passive="onLogScroll">
+          <p v-if="logMatches.length > SHOWN" class="px-6 py-1.5 text-[11.5px] text-ink-3">
+            The latest {{ SHOWN }} of {{ logMatches.length }} lines — a filter reaches further back.
+          </p>
+          <ol class="font-mono text-[11.5px]">
+            <li v-for="l in logShown" :key="l.id" :data-level="l.level"
+                class="flex items-baseline gap-2.5 border-b border-hairline/70 px-6 py-[3px]" :class="ROW_TINT[l.level]">
+              <span class="shrink-0 tabular-nums text-ink-3">{{ clock(l.at) }}</span>
+              <span class="w-10 shrink-0 text-[10.5px] font-semibold uppercase" :class="LEVEL_TEXT[l.level]">{{ l.said === 'log' ? 'log' : l.level }}</span>
+              <span v-if="l.source !== 'page'" class="shrink-0 rounded px-1 text-[10.5px]"
+                    :class="l.source === 'runner' ? 'bg-ink/[0.06] text-ink-2' : 'bg-critical/10 text-critical'">{{ l.source === 'runner' ? 'runner' : 'uncaught' }}</span>
+              <span class="min-w-0 grow whitespace-pre-wrap break-words" :class="ROW_TEXT[l.level]">{{ l.text }}</span>
+              <span v-if="l.n > 1" class="shrink-0 rounded bg-ink/[0.07] px-1.5 text-[10.5px] text-ink-2"
+                    :title="`printed ${l.n} times in a row`">×{{ l.n }}</span>
+              <span v-if="l.url" class="max-w-[16rem] shrink-0 truncate text-ink-3" :title="l.url">{{ whereFrom(l.url, l.line) }}</span>
+            </li>
+          </ol>
+          <p v-if="!logShown.length" class="px-6 py-3 text-[12.5px] text-ink-3">
+            {{ logRows.length ? 'Nothing matches this filter.'
+              : 'Nothing yet. Every line the page prints — errors, warnings, info, debug, uncaught exceptions — and everything the runner says while driving it lands here as it happens.' }}
+          </p>
+        </div>
+
+        <button v-if="unseen" type="button"
+                class="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink px-3 py-1 text-[12px] font-medium text-white shadow-md"
+                @click="toLatest">↓ {{ unseen }} new line{{ unseen === 1 ? '' : 's' }}</button>
+      </template>
+    </div>
+  </section>
 </template>

@@ -24,6 +24,14 @@ import { api } from '@/api';
 import { useSession } from '@/stores/session';
 
 const MAX_LOG = 200;
+/** The page's console keeps more: there every line is the point, and a chatty page prints 200 in a second. */
+const MAX_CONSOLE = 1000;
+/**
+ * Arrival order across the runner's log and the page's console, which the dock
+ * merges into one stream. A timestamp cannot keep it: the runner's line and the
+ * page's line routinely land in the same millisecond.
+ */
+let arrival = 0;
 /**
  * Reconnect timing. Fast at first — the server restarts often while you are
  * working on it — and doubling up to thirty seconds, so a runner that is down
@@ -49,6 +57,12 @@ export const useLive = defineStore('live', {
     // The plan said no: {limit, plan, of}. A view turns it into an upgrade
     // prompt rather than a red box, and clears it when dismissed.
     upgrade: null,
+    /**
+     * The operator's switches for the runner (docs/HARDENING.md), from the
+     * greeting: { 'runner.recording': true, … }. A key that is missing counts
+     * as ON, so a runner too old to send any turns nothing off in the UI.
+     */
+    switches: {},
     targets: [],
     running: false,
     recording: false,
@@ -62,8 +76,8 @@ export const useLive = defineStore('live', {
     ripple: 0,
     needsOrigin: null,
     navs: [],           // recent navigations, newest first
-    console: [],        // the DRIVEN page's console, newest first
-    showConsole: false, // off by default: a chatty app would bury the script
+    console: [],        // the DRIVEN page's console, oldest first
+    consoleSince: 0,    // the dock's Clear: lines that arrived before this are not shown
     /**
      * How much of a run to perform: 'watch' is the server's own pace, 'fast'
      * removes the performance entirely.
@@ -234,7 +248,7 @@ export const useLive = defineStore('live', {
     },
 
     say(msg, level = 'info') {
-      this.log.unshift({ id: `${Date.now()}-${Math.random()}`, at: Date.now(), level, msg });
+      this.log.unshift({ id: `${Date.now()}-${Math.random()}`, seq: ++arrival, at: Date.now(), level, msg });
       if (this.log.length > MAX_LOG) this.log.length = MAX_LOG;
     },
 
@@ -253,6 +267,7 @@ export const useLive = defineStore('live', {
           // the Run button was disabled until someone reloaded the page.
           this.running = !!ev.running;
           this.recording = !!ev.recording;
+          this.switches = ev.switches ?? {};
           break;
         // The browser changed hands, or was let go. When it is no longer ours
         // the page on it is someone else's: forget the address, the targets
@@ -283,11 +298,15 @@ export const useLive = defineStore('live', {
           else if (ev.error === 'runner_busy') this.say('Another organisation is driving the runner right now — try again when it is free', 'error');
           else if (ev.error === 'forbidden') this.say('Only an owner or admin of this organisation can do that', 'error');
           break;
-        // The driven page's own console. Capped like the log — a page in a
-        // render loop can print faster than anyone can read.
+        // The driven page's own console, oldest first: a log is read downwards,
+        // and the dock keeps you on the newest line. Stamped on arrival, with
+        // the runner's own stamp kept as `sent`, so it interleaves with the
+        // runner's lines in the order the two actually came in. Capped — a page
+        // in a render loop can print faster than anyone can read — but higher
+        // than the log, because here every line is the point.
         case 'console':
-          this.console.unshift({ id: `${Date.now()}-${Math.random()}`, ...ev });
-          if (this.console.length > MAX_LOG) this.console.length = MAX_LOG;
+          this.console.push({ ...ev, id: `${Date.now()}-${Math.random()}`, seq: ++arrival, sent: ev.at, at: Date.now() });
+          if (this.console.length > MAX_CONSOLE) this.console.splice(0, this.console.length - MAX_CONSOLE);
           break;
         case 'nav':
           this.navs.unshift({ id: `${Date.now()}-${Math.random()}`, ...ev });

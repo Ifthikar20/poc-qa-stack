@@ -108,8 +108,9 @@ const ICONS = {
   <aside class="flex shrink-0 flex-col border-r border-hairline bg-panel transition-[width] duration-200"
          :class="rail ? 'w-16' : 'w-[248px]'">
     <!-- The mark, doubling as the toggle. A product signs its own corner, and
-         the corner is also the most findable place to put the control that put
-         it there — no floating button, no second affordance to keep in sync. -->
+         the corner is where a hand goes looking for the control that put it
+         there. It is not the only toggle — see the labelled one at the foot —
+         but both call the same action, so there is nothing to keep in sync. -->
     <button type="button" @click="ui.toggleNav()"
             :title="rail ? 'Expand the sidebar' : 'Collapse the sidebar'"
             :aria-label="rail ? 'Expand the sidebar' : 'Collapse the sidebar'"
@@ -301,5 +302,22 @@ const ICONS = {
         {{ version.commit ?? 'no git' }} · ui {{ version.built ? version.built.replace('T', ' ').slice(5, 16) : 'not built' }}
       </p>
     </div>
+
+    <!-- The toggle, where it can be found. The mark at the top does the same,
+         but nothing about a logo says "press me", so the sidebar read as fixed
+         until someone happened to hover that corner. -->
+    <button type="button" @click="ui.toggleNav()"
+            :title="rail ? 'Expand the sidebar' : 'Collapse the sidebar'"
+            :aria-label="rail ? 'Expand the sidebar' : 'Collapse the sidebar'"
+            :aria-expanded="!rail"
+            class="nav-item mb-3 hover:bg-ink/[0.04] hover:text-ink"
+            :class="rail ? 'nav-item-rail mx-2 mt-2' : 'mx-3'">
+      <svg viewBox="0 0 16 16" class="size-4 shrink-0" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2.5 3h11v10h-11zM6 3v10" />
+        <path :d="rail ? 'M9 6.5 10.5 8 9 9.5' : 'M10.5 6.5 9 8l1.5 1.5'" />
+      </svg>
+      <span v-if="!rail">Collapse</span>
+    </button>
   </aside>
 </template>
