@@ -723,6 +723,20 @@ export const useSession = defineStore('session', {
     async executorToken() {
       if (!hasAuth()) return null;
       if (this.token && Date.now() < this.expiresAt - RENEW_BEFORE_MS) return this.token;
+
+      // Nobody to mint for, and asking anyway is not harmless. Before this
+      // guard, any api.* call made while signed out raced boot() for the CSRF
+      // token and reached the control plane without one, so a signed-out page
+      // load wrote `Forbidden (CSRF cookie not set.): /auth/executor-token`
+      // into the log on every render — a real error message describing a
+      // non-problem, which is the kind that teaches people to skim the log.
+      //
+      // `ready` rather than `user` alone: during boot the answer is not "no",
+      // it is "not yet", and returning null there would make the first call
+      // after a reload anonymous for no reason.
+      if (!this.ready) await this.boot();
+      if (!this.user) return null;
+
       if (this.pending) return this.pending;
 
       this.pending = (async () => {
