@@ -14,6 +14,14 @@
  *
  * `run` answers 'reauthenticate' when the sheet is up, whatever kind of
  * proof was asked for; the store's outcome is passed through otherwise.
+ *
+ * `switched` is for the sheet: the flow it opened on can turn out to be the
+ * wrong one. The runner's step-up refusal names no proof, so the view guesses
+ * from the session's cached `mfa.enrolled` — and when that is stale (enrolled
+ * in another tab, or /auth/me not refreshed since) the sheet opens on the
+ * password form, the control plane answers 401 mfa_reauthenticate, and the
+ * person is told a correct password was not accepted with no way forward.
+ * A different proof being wanted is not a failure; it is a different sheet.
  */
 import { ref } from 'vue';
 
@@ -33,6 +41,14 @@ export function useGuarded() {
     return outcome;
   }
 
+  /**
+   * The control plane wants a different proof than the sheet is showing.
+   * Keep the waiting action and re-open on the flow it named.
+   */
+  function switched(next) {
+    flow.value = next;
+  }
+
   /** The sheet proved it: run the thing that was waiting. */
   async function proved() {
     flow.value = null;
@@ -46,5 +62,5 @@ export function useGuarded() {
     retry = null;
   }
 
-  return { flow, run, proved, cancel };
+  return { flow, run, proved, switched, cancel };
 }

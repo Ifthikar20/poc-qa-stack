@@ -42,7 +42,9 @@ const routes = [
   { path: '/signup', name: 'signup', component: () => import('@/views/SignupView.vue'), meta: { open: true, anonymousOnly: true } },
   { path: '/verify', name: 'verify', component: () => import('@/views/VerifyView.vue'), meta: { open: true } },
   { path: '/forgot-password', name: 'forgot-password', component: () => import('@/views/ForgotPasswordView.vue'), meta: { open: true, anonymousOnly: true } },
-  { path: '/reset-password/:key', name: 'reset-password', component: () => import('@/views/ResetPasswordView.vue'), meta: { open: true } },
+  // ?key=, not /:key — the edge's access log can delete a query parameter
+  // and cannot redact a path segment (docker/Caddyfile, [ops-supply-4]).
+  { path: '/reset-password', name: 'reset-password', component: () => import('@/views/ResetPasswordView.vue'), meta: { open: true } },
   { path: '/invite', name: 'invite', component: () => import('@/views/InviteView.vue'), meta: { open: true } },
   { path: '/security', name: 'security', component: () => import('@/views/SecurityView.vue') },
   { path: '/security/password', name: 'security-password', component: () => import('@/views/ChangePasswordView.vue') },

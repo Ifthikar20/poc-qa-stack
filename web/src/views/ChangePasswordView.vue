@@ -77,6 +77,6 @@ async function signOut() {
         <RouterLink :to="{ name: 'security' }" class="text-brand-2 underline">Back to security</RouterLink>.
       </template>
     </template>
-    <ReauthSheet v-if="guard.flow.value" :flow="guard.flow.value" @done="proved" @cancel="guard.cancel()" />
+    <ReauthSheet v-if="guard.flow.value" :flow="guard.flow.value" @done="proved" @switch="guard.switched" @cancel="guard.cancel()" />
   </AuthShell>
 </template>
