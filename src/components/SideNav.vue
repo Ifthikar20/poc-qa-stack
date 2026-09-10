@@ -17,6 +17,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { useSuites } from '@/stores/suites';
 import { useLive } from '@/stores/live';
 import { useSession } from '@/stores/session';
+import { useUi } from '@/stores/ui';
+import SiteIcon from '@/components/SiteIcon.vue';
 import { api } from '@/api';
 
 const route = useRoute();
@@ -24,6 +26,18 @@ const router = useRouter();
 const suites = useSuites();
 const live = useLive();
 const session = useSession();
+const ui = useUi();
+
+/**
+ * Collapsed is a 64px RAIL, not zero width.
+ *
+ * Collapsing to nothing means the only way back is a control that has to live
+ * somewhere else — a floating button over the content, or a hamburger in the
+ * header — and then the shell has two nav affordances that must agree. A rail
+ * keeps the toggle where the sidebar already is, and keeps the icons, which are
+ * most of what you navigate by once you know the product.
+ */
+const rail = computed(() => ui.navCollapsed);
 
 async function signOut() {
   await session.logout();
@@ -47,6 +61,14 @@ async function switchOrg(slug) {
   } catch (e) { live.say(e.message, 'error'); }
   finally { switching.value = false; }
 }
+/**
+ * The runner's state, once, because the rail and the expanded row both draw it
+ * and a second copy of this ternary is how they end up disagreeing.
+ */
+const runnerState = computed(() => (live.busy ? `Runner busy — ${live.driving.org}`
+  : live.connected ? 'Runner connected' : 'Runner offline'));
+const runnerDot = computed(() => (live.busy ? 'bg-warn' : live.connected ? 'bg-good' : 'bg-critical'));
+
 const initial = computed(() => (session.org?.name ?? 'Local').slice(0, 1).toUpperCase());
 
 const openId = computed(() => route.params.id ?? null);
@@ -80,37 +102,61 @@ const ICONS = {
 </script>
 
 <template>
-  <aside class="flex w-[248px] shrink-0 flex-col border-r border-hairline bg-panel">
-    <!-- The mark. Two-tone wordmark, the way a product signs its own corner. -->
-    <div class="flex items-center gap-2.5 px-4 py-4">
-      <span class="grid size-7 place-items-center rounded-lg bg-ink">
+  <!-- Width is the only thing that changes, because App.vue's shell is plain
+       flexbox: main is flex-1 and reflows on its own. Transitioning the width
+       rather than toggling it stops the content from jumping. -->
+  <aside class="flex shrink-0 flex-col border-r border-hairline bg-panel transition-[width] duration-200"
+         :class="rail ? 'w-16' : 'w-[248px]'">
+    <!-- The mark, doubling as the toggle. A product signs its own corner, and
+         the corner is also the most findable place to put the control that put
+         it there — no floating button, no second affordance to keep in sync. -->
+    <button type="button" @click="ui.toggleNav()"
+            :title="rail ? 'Expand the sidebar' : 'Collapse the sidebar'"
+            :aria-label="rail ? 'Expand the sidebar' : 'Collapse the sidebar'"
+            :aria-expanded="!rail"
+            class="group flex items-center gap-2.5 py-4 hover:bg-ink/[0.03]"
+            :class="rail ? 'justify-center px-0' : 'px-4'">
+      <span class="grid size-7 shrink-0 place-items-center rounded-lg bg-ink">
         <span class="size-2 rounded-full bg-brand" />
       </span>
-      <span class="text-[15px] font-semibold tracking-tight text-ink">ghost<span class="text-brand">click</span></span>
-    </div>
+      <span v-if="!rail" class="text-[15px] font-semibold tracking-tight text-ink">ghost<span class="text-brand">click</span></span>
+      <svg v-if="!rail" viewBox="0 0 16 16" class="ml-auto size-4 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100"
+           fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9.5 4.5 6 8l3.5 3.5" />
+      </svg>
+    </button>
 
     <!-- Workspace: the organisation you act for (docs/AUTH.md §10) — every
          suite, origin and run below is hers — with its plan, and whether the
          thing that does the work is actually up: a runner that has quietly
          died should not need a run to discover, and one another organisation
-         is driving should say so here, not on the canvas. -->
-    <div class="mx-3 mb-5 rounded-xl border border-hairline bg-ground px-3 py-2.5">
-      <div class="flex items-center gap-2.5">
-        <span class="grid size-7 shrink-0 place-items-center rounded-lg bg-panel text-[12px] font-semibold
-                     text-ink-2 ring-1 ring-hairline">{{ initial }}</span>
-        <span class="min-w-0 flex-1">
+         is driving should say so here, not on the canvas.
+
+         Collapsed to the rail there is nowhere to write any of that, so the
+         name, the plan and the switcher go and the runner state becomes a dot
+         on the avatar. Dropping it entirely would hide the one thing this
+         block exists to surface, so the title carries the words for a pointer. -->
+    <div class="mb-5 rounded-xl border border-hairline bg-ground"
+         :class="rail ? 'mx-2 p-2' : 'mx-3 px-3 py-2.5'">
+      <div class="flex items-center gap-2.5" :class="rail && 'justify-center'">
+        <span class="relative grid size-7 shrink-0 place-items-center rounded-lg bg-panel text-[12px] font-semibold
+                     text-ink-2 ring-1 ring-hairline"
+              :title="rail ? `${session.org?.name ?? 'Local workspace'} — ${runnerState}` : session.org?.slug">{{ initial }}<span
+              v-if="rail" class="absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-ground"
+              :class="runnerDot" /></span>
+        <span v-if="!rail" class="min-w-0 flex-1">
           <span class="flex items-center gap-1.5">
             <span class="block truncate text-[13px] font-medium text-ink" :title="session.org?.slug">{{ session.org?.name ?? 'Local workspace' }}</span>
             <span v-if="session.org?.plan" class="shrink-0 rounded-full bg-brand-50 px-1.5 py-px text-[10.5px] font-medium text-brand-2">{{ session.org.plan }}</span>
           </span>
           <span class="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-ink-3">
-            <span class="size-1.5 rounded-full" :class="live.busy ? 'bg-warn' : live.connected ? 'bg-good' : 'bg-critical'" />
-            {{ live.busy ? `Runner busy — ${live.driving.org}` : live.connected ? 'Runner connected' : 'Runner offline' }}
+            <span class="size-1.5 rounded-full" :class="runnerDot" />
+            {{ runnerState }}
           </span>
         </span>
       </div>
       <!-- A switcher only when there is something to switch to. -->
-      <select v-if="session.orgs.length > 1" :value="session.org?.slug" :disabled="switching"
+      <select v-if="!rail && session.orgs.length > 1" :value="session.org?.slug" :disabled="switching"
               aria-label="Act for another organisation"
               class="mt-2 w-full rounded-lg border border-hairline bg-panel px-2 py-1 text-[12px] text-ink-2 outline-none focus:border-ink/25"
               @change="switchOrg($event.target.value)">
@@ -118,27 +164,30 @@ const ICONS = {
       </select>
     </div>
 
-    <nav class="flex-1 overflow-y-auto px-3 pb-4">
-      <div class="flex items-center justify-between px-2 pb-2">
-        <span class="eyebrow">Test suites</span>
+    <nav class="flex-1 overflow-y-auto pb-4" :class="rail ? 'px-2' : 'px-3'">
+      <div class="flex items-center pb-2" :class="rail ? 'justify-center' : 'justify-between px-2'">
+        <span v-if="!rail" class="eyebrow">Test suites</span>
         <RouterLink to="/suites/new" title="Onboard a project" aria-label="Onboard a project"
                     class="grid size-5 place-items-center rounded-md text-[15px] leading-none text-ink-3
                            hover:bg-ink/[0.05] hover:text-ink">+</RouterLink>
       </div>
 
-      <p v-if="!suites.list.length" class="px-2 py-1.5 text-[12.5px] text-ink-3">
+      <p v-if="!suites.list.length && !rail" class="px-2 py-1.5 text-[12.5px] text-ink-3">
         None yet — <RouterLink to="/suites/new" class="text-brand-2 underline underline-offset-2">onboard one</RouterLink>.
       </p>
 
       <template v-for="s in suites.list" :key="s.id">
+        <!-- The site's own mark, not a glyph every suite shares. `title` and
+             `aria-label` are on the link rather than the image because in the
+             rail the visible label is gone, and the name has to survive that
+             for a hover and for a screen reader alike. -->
         <RouterLink :to="`/suites/${s.id}`" class="nav-item hover:bg-ink/[0.04] hover:text-ink"
-                    :class="openId === s.id && 'nav-item-on'">
-          <svg viewBox="0 0 16 16" class="size-4 shrink-0" fill="none" stroke="currentColor"
-               stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
-            <path :d="ICONS.suite" />
-          </svg>
-          <span class="truncate">{{ s.name }}</span>
-          <span class="ml-auto shrink-0 text-[11px] tabular-nums text-ink-3">{{ s.cases }}</span>
+                    :class="[openId === s.id && 'nav-item-on', rail && 'nav-item-rail']"
+                    :title="rail ? `${s.name} — ${s.cases} case${s.cases === 1 ? '' : 's'}` : null"
+                    :aria-label="rail ? s.name : null">
+          <SiteIcon :origin="s.origin" :name="s.name" :size="rail ? 'size-5' : 'size-4'" />
+          <span v-if="!rail" class="truncate">{{ s.name }}</span>
+          <span v-if="!rail" class="ml-auto shrink-0 text-[11px] tabular-nums text-ink-3">{{ s.cases }}</span>
         </RouterLink>
 
         <!-- The open suite's own sections, hung off it so the nav answers
@@ -147,7 +196,7 @@ const ICONS = {
              `text-brand-2` are both plain text utilities, so which one wins is
              decided by stylesheet order, not by the order they are written
              here — the selected section came out grey. -->
-        <div v-if="openId === s.id" class="mb-1 ml-[1.9rem]">
+        <div v-if="openId === s.id && !rail" class="mb-1 ml-[1.9rem]">
           <RouterLink v-for="x in SECTIONS" :key="x.to" :to="{ name: x.to, params: { id: s.id } }"
             class="block rounded-lg px-2.5 py-1.5 text-[12.5px]"
             :class="route.name === x.to
@@ -158,38 +207,44 @@ const ICONS = {
         </div>
       </template>
 
-      <p class="eyebrow px-2 pb-2 pt-6">General</p>
-      <RouterLink to="/dashboard" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on">
+      <p v-if="!rail" class="eyebrow px-2 pb-2 pt-6">General</p>
+      <div v-else class="mx-2 mt-6 mb-2 border-t border-hairline" />
+      <RouterLink to="/dashboard" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on"
+                  :class="rail && 'nav-item-rail'" :title="rail ? 'Run history' : null" :aria-label="rail ? 'Run history' : null">
         <svg viewBox="0 0 16 16" class="size-4 shrink-0" fill="none" stroke="currentColor"
              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path :d="ICONS.history" />
         </svg>
-        Run history
+        <span v-if="!rail">Run history</span>
       </RouterLink>
-      <RouterLink to="/defects" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on">
+      <RouterLink to="/defects" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on"
+                  :class="rail && 'nav-item-rail'" :title="rail ? 'Defects' : null" :aria-label="rail ? 'Defects' : null">
         <svg viewBox="0 0 16 16" class="size-4 shrink-0" fill="none" stroke="currentColor"
              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path :d="ICONS.defects" />
         </svg>
-        Defects
+        <span v-if="!rail">Defects</span>
       </RouterLink>
-      <RouterLink to="/console" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on">
+      <RouterLink to="/console" class="nav-item relative hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on"
+                  :class="rail && 'nav-item-rail'" :title="rail ? 'Console' : null" :aria-label="rail ? 'Console' : null">
         <svg viewBox="0 0 16 16" class="size-4 shrink-0" fill="none" stroke="currentColor"
              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path :d="ICONS.console" />
         </svg>
-        Console
-        <span v-if="live.recording" class="ml-auto size-1.5 animate-pulse rounded-full bg-critical" title="recording" />
-        <span v-else-if="live.running" class="ml-auto size-1.5 animate-pulse rounded-full bg-brand" title="running" />
+        <span v-if="!rail">Console</span>
+        <span v-if="live.recording" :class="rail ? 'absolute right-1 top-1 size-1.5' : 'ml-auto size-1.5'" class="animate-pulse rounded-full bg-critical" title="recording" />
+        <span v-else-if="live.running" :class="rail ? 'absolute right-1 top-1 size-1.5' : 'ml-auto size-1.5'" class="animate-pulse rounded-full bg-brand" title="running" />
       </RouterLink>
 
-      <p class="eyebrow px-2 pb-2 pt-6">Admin</p>
-      <RouterLink to="/settings" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on">
+      <p v-if="!rail" class="eyebrow px-2 pb-2 pt-6">Admin</p>
+      <div v-else class="mx-2 mt-6 mb-2 border-t border-hairline" />
+      <RouterLink to="/settings" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on"
+                  :class="rail && 'nav-item-rail'" :title="rail ? 'Origins &amp; vault' : null" :aria-label="rail ? 'Origins &amp; vault' : null">
         <svg viewBox="0 0 16 16" class="size-4 shrink-0" fill="none" stroke="currentColor"
              stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path :d="ICONS.settings" />
         </svg>
-        Origins &amp; vault
+        <span v-if="!rail">Origins &amp; vault</span>
       </RouterLink>
       <RouterLink v-if="session.required" to="/organisation" class="nav-item hover:bg-ink/[0.04] hover:text-ink" active-class="nav-item-on">
         <svg viewBox="0 0 16 16" class="size-4 shrink-0" fill="none" stroke="currentColor"
@@ -213,18 +268,30 @@ const ICONS = {
          shared machine it is the half that matters. Hidden entirely when no
          control plane is configured, so the laptop case gains no dead UI. -->
     <div v-if="session.required && session.user"
-         class="mx-3 mt-3 flex items-center gap-2 rounded-xl border border-hairline bg-ground px-3 py-2.5">
-      <span class="grid size-7 shrink-0 place-items-center rounded-full bg-brand-50 text-[11.5px] font-medium text-brand-2">
+         class="mt-3 flex items-center gap-2 rounded-xl border border-hairline bg-ground"
+         :class="rail ? 'mx-2 justify-center p-2' : 'mx-3 px-3 py-2.5'">
+      <span class="grid size-7 shrink-0 place-items-center rounded-full bg-brand-50 text-[11.5px] font-medium text-brand-2"
+            :title="rail ? session.user.email : null">
         {{ (session.user.name || session.user.email).slice(0, 1).toUpperCase() }}
       </span>
-      <span class="min-w-0 grow truncate text-[12px] text-ink-2" :title="session.user.email">
+      <span v-if="!rail" class="min-w-0 grow truncate text-[12px] text-ink-2" :title="session.user.email">
         {{ session.user.name || session.user.email }}
       </span>
-      <button class="shrink-0 rounded-lg px-2 py-1 text-[12px] text-ink-3 hover:bg-ink/[0.05] hover:text-ink"
+      <button v-if="!rail" class="shrink-0 rounded-lg px-2 py-1 text-[12px] text-ink-3 hover:bg-ink/[0.05] hover:text-ink"
               @click="signOut">Sign out</button>
     </div>
+    <!-- In the rail the words do not fit, but signing out must not become
+         unreachable — it is the half of auth that matters on a shared machine. -->
+    <button v-if="session.required && session.user && rail" @click="signOut"
+            title="Sign out" aria-label="Sign out"
+            class="mx-2 mt-2 grid place-items-center rounded-lg py-2 text-ink-3 hover:bg-ink/[0.05] hover:text-ink">
+      <svg viewBox="0 0 16 16" class="size-4" fill="none" stroke="currentColor" stroke-width="1.5"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M6 13.5H3.5v-11H6M10 11l3-3-3-3M13 8H6.5" />
+      </svg>
+    </button>
 
-    <div class="m-3 rounded-xl border border-hairline bg-ground p-3 text-[12px] leading-relaxed text-ink-2">
+    <div v-if="!rail" class="m-3 rounded-xl border border-hairline bg-ground p-3 text-[12px] leading-relaxed text-ink-2">
       <p class="font-medium text-ink">Suites are project data</p>
       <p class="mt-1">They live in <code class="rounded bg-ink/[0.05] px-1 py-px font-mono text-[11px]">suites/{{ session.org?.slug ?? 'local' }}/</code>
         and belong in git. Run history stays on this machine.</p>
