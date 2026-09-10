@@ -95,7 +95,7 @@ function textOptions(p) {
                 body="Add the first URL below. Scanning it shows you what is on it." />
 
     <section v-for="p in suite.pages" :key="p.id" class="card mb-4 p-5">
-      <div class="flex items-baseline gap-3">
+      <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
         <h2 class="text-[15px] font-medium">{{ p.name }}</h2>
         <span class="font-mono text-[12px] text-ink-3">{{ p.path }}</span>
         <span class="ml-auto text-[12px] text-ink-3">

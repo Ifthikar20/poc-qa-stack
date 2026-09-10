@@ -245,7 +245,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
     </section>
 
     <!-- 2 ------------------------------------------------------------ -->
-    <section v-else-if="step === 2" class="grid gap-4">
+    <section v-else-if="step === 2" class="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div v-if="!allowed" class="card wash-warm p-5">
         <p class="text-[13.5px] font-medium">{{ origin }} is not allowed yet.</p>
         <p class="mt-1.5 max-w-xl text-[13px] leading-relaxed text-ink-2">
@@ -321,7 +321,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
     </section>
 
     <!-- 3 ------------------------------------------------------------ -->
-    <section v-else-if="step === 3" class="grid gap-4">
+    <section v-else-if="step === 3" class="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div class="card p-6">
         <h2 class="display text-xl">What has to be true?</h2>
         <p class="mt-1.5 max-w-2xl text-[13.5px] leading-relaxed text-ink-2">
@@ -369,7 +369,7 @@ const recordFirst = () => router.push({ path: '/console', query: { suite: suite.
     </section>
 
     <!-- 4 ------------------------------------------------------------ -->
-    <section v-else class="grid gap-4">
+    <section v-else class="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div class="card wash p-6">
         <h2 class="display text-xl">{{ suite.name }} is onboarded.</h2>
         <p class="mt-2 max-w-2xl text-[13.5px] leading-relaxed text-ink-2">

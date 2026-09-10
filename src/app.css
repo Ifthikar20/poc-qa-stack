@@ -52,6 +52,28 @@
   --color-critical:   #d03b3b;
   --color-warn:       #a86b00;
 
+  /* The case language, coloured (FlowRead, and the editor in FlowBox). One hue
+     per verb, so what a step does reads before its words do — each dark enough
+     to be 12.5px text on the ground (4.6:1 and up), and never the only signal,
+     since the verb is written beside it.
+
+     Blue is spent on one thing: an address. A URL, a path, a link on the page.
+     It used to be the colour of scrolling as well, and a colour that means two
+     things means neither. */
+  --color-code-open:   #4338ca;
+  --color-code-link:   #2563eb;
+  --color-code-click:  #c2006a;
+  --color-code-hover:  #c2410c;
+  --color-code-fill:   #7c3aed;
+  --color-code-scroll: #0e7490;
+  --color-code-wait:   #4d7c0f;
+  --color-code-check:  #0f766e;
+  --color-code-see:    #15803d;
+  --color-code-role:   #64748b;
+  --color-code-value:  #b45309;
+  --color-code-vault:  #92400e;
+  --color-code-todo:   #b42318;
+
   --radius-card:      0.875rem;
 }
 
@@ -68,7 +90,18 @@
 
 /* ------------------------------------------------------------------ base */
 html { color-scheme: light; }
+/**
+ * A long word wraps rather than widening its box.
+ *
+ * Names, URLs and error messages here come from the sites under test, and a
+ * URL is one very long word. Left to the default, a single one sets the
+ * minimum width of whatever holds it — a chip, a card, a table, a column — so
+ * the box is pushed past its column or past the screen, and a box that clips
+ * hides whatever it pushed out. `anywhere` breaks such a word only when it
+ * cannot fit, so ordinary text reads the same; `truncate` keeps its one line.
+ */
 body {
+  overflow-wrap: anywhere;
   margin: 0;
   background: var(--color-ground);
   color: var(--color-ink);
@@ -91,6 +124,12 @@ button:not(:disabled):active, [role="button"]:not([aria-disabled="true"]):active
   transform: scale(0.97);
 }
 button:disabled { cursor: not-allowed; }
+
+/* The stage's loading bar: a third of the width, sliding across and round again. */
+@keyframes stage-load {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
 
 /* Radiant's display type: large, tight, and never letter-spaced apart. */
 @utility display {

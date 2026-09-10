@@ -68,7 +68,7 @@ async function allow() {
       <StatTile label="Pass rate" :value="rate" :note="runs ? `${runs.totals.week} runs this week` : ''" />
     </div>
 
-    <div class="grid gap-4 lg:grid-cols-2">
+    <div class="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
       <section class="card p-5">
         <h2 class="text-[15px] font-medium">Pages</h2>
         <ul v-if="suite.pages.length" class="mt-3 divide-y divide-hairline border-y border-hairline">
