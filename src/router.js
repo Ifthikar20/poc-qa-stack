@@ -12,7 +12,12 @@ import { safeNext, useSession } from '@/stores/session';
  * so their paths are a contract, not a choice.
  */
 const routes = [
-  { path: '/', redirect: '/suites' },
+  // The front door, and the only page that renders for someone with no account.
+  // `anonymousOnly` sends a signed-in arrival to the suites, and with no control
+  // plane configured the guard does the same — a landing page advertising a
+  // sign-in that does not exist would be a dead end.
+  { path: '/', name: 'landing', component: () => import('@/views/LandingView.vue'),
+    meta: { open: true, anonymousOnly: true } },
   { path: '/dashboard', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
   { path: '/suites', name: 'suites', component: () => import('@/views/SuitesView.vue') },
   { path: '/suites/new', name: 'suite-new', component: () => import('@/views/OnboardView.vue') },

@@ -16,7 +16,7 @@ const route = useRoute();
 // account is sent to when it must enrol an authenticator first. Every item
 // in that sidebar needs the runner, and the runner will refuse — a nav full
 // of things that 401 is a broken dashboard, not a sign-in screen.
-const BARE = ['login', 'mfa', 'signup', 'verify', 'forgot-password', 'reset-password', 'invite',
+const BARE = ['landing', 'login', 'mfa', 'signup', 'verify', 'forgot-password', 'reset-password', 'invite',
               'security-password', 'security-email', 'security-mfa'];
 const shell = computed(() => !BARE.includes(route.name));
 
