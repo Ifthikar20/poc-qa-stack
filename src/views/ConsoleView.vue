@@ -223,7 +223,31 @@ const saveError = ref(null);   // shown in the Recording card, beside the button
 const opening = ref(null);
 const saving = ref(false);
 const allowing = ref(false);
+const clearingSession = ref(false);
 const cases = ref([]);
+
+/**
+ * A saved sign-in, in words: it opens the runner already logged in, for a login
+ * that cannot be recorded (Google, a passkey, a code). Imported by the recorder
+ * extension; shown here so it is visible next to the page it affects, with when
+ * it goes stale and a way to forget it.
+ */
+const sessionState = computed(() => {
+  const s = live.session;
+  if (!s?.loaded) return null;
+  const e = s.expires ? s.expires * 1000 : null;
+  const stale = e !== null && e < Date.now();
+  const when = e === null ? 'until you sign out'
+    : stale ? 'expired — sign in again and re-save'
+    : `expires ${new Date(e).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+  return { for: s.origins.join(', ') || 'this app', when, stale };
+});
+async function clearSession() {
+  clearingSession.value = true;
+  try { await api.clearSession(); }       // the runner replies with a `session` event that empties the store
+  catch (e) { error.value = e.message; }
+  finally { clearingSession.value = false; }
+}
 const picked = ref('');
 const loaded = ref(null);      // which saved case is in the box, if any
 
@@ -593,6 +617,25 @@ watch(() => live.recordedFlow, (f) => {
       <!-- The chrome the canvas does not have. A video of a browser shows you
            the page and nothing about where it is; this is the address bar. -->
       <AddressBar :url="live.url" :nav="currentNav" />
+
+      <!-- A saved sign-in opens the runner already logged in, for a login that
+           cannot be recorded. Shown right under the address, because it is a
+           fact about the page being driven; imported from the recorder
+           extension, cleared from here. -->
+      <div v-if="sessionState"
+           class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-3 py-1.5 text-[12.5px]"
+           :class="sessionState.stale ? 'border-warn/30 bg-warn/[0.06]' : 'border-brand/20 bg-brand-50/70'">
+        <svg viewBox="0 0 24 24" class="size-3.5 shrink-0" :class="sessionState.stale ? 'text-warn' : 'text-brand-2'"
+             fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 12h7m0 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0Zm6 0h2m0 0v3m0-3 3-1m0 4v-3" />
+        </svg>
+        <span class="text-ink-2">Opens signed in for <b class="font-medium text-ink">{{ sessionState.for }}</b></span>
+        <span class="text-ink-3">· {{ sessionState.when }}</span>
+        <button class="ml-auto rounded-full px-2 py-0.5 text-brand-2 hover:bg-brand-50 disabled:text-ink-3"
+                :disabled="clearingSession" @click="clearSession">
+          {{ clearingSession ? 'Clearing…' : 'Clear' }}
+        </button>
+      </div>
 
       <div ref="wrap" class="stage relative rounded-t-none" style="container-type: size; aspect-ratio: 1180 / 760">
         <canvas ref="canvas" :width="VIEW.w" :height="VIEW.h" tabindex="0"

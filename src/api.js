@@ -131,6 +131,11 @@ export const api = {
   allowOrigin:  (origin) => req('/api/origins', { method: 'POST', body: { origin } }),
   removeOrigin: (origin) => req('/api/origins', { method: 'DELETE', body: { origin } }),
 
+  // A saved sign-in (sessions.js). It is IMPORTED by the recorder extension —
+  // which is the only thing that can read a site's cookies — so there is no set
+  // here; the console only shows it (via the socket) and clears it.
+  clearSession: () => req('/api/session', { method: 'DELETE' }),
+
   suites:      () => req('/api/suites'),
   cases:       () => req('/api/cases'),
   quickstart:  (url) => req('/api/suites/quickstart', { method: 'POST', body: { url } }),

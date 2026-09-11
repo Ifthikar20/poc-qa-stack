@@ -47,6 +47,13 @@ export const useLive = defineStore('live', {
     url: null,
     origins: [],
     secrets: [],        // filled by a `secrets` reply, never by the greeting
+    /**
+     * A saved sign-in for this organisation (sessions.js): { loaded, origins,
+     * cookies, names, expires }. From the greeting and a `session` event — never
+     * a cookie value, only what is safe to show, so the console can say "opens
+     * signed in for treasury.sh" and offer to clear it.
+     */
+    session: { loaded: false, origins: [], cookies: 0, names: [], expires: null },
     org: null,          // which organisation this socket is, as the runner sees it
     /**
      * Who is driving the one browser (docs/AUTH.md §10): `org` is whose page
@@ -268,6 +275,7 @@ export const useLive = defineStore('live', {
           this.running = !!ev.running;
           this.recording = !!ev.recording;
           this.switches = ev.switches ?? {};
+          if (ev.session) this.session = ev.session;
           break;
         // The browser changed hands, or was let go. When it is no longer ours
         // the page on it is someone else's: forget the address, the targets
@@ -278,6 +286,10 @@ export const useLive = defineStore('live', {
           break;
         case 'origins': this.origins = ev.origins; break;
         case 'secrets': this.secrets = ev.secrets; break;
+        // A saved sign-in was imported (by the extension) or cleared. Not page
+        // state — it is our organisation's, so it survives the browser changing
+        // hands and is never blanked by a `driving` change.
+        case 'session': this.session = ev.session; break;
         // Cheap and immediate; `targets` carries the same URL but arrives
         // after discovery, which is far too late for an address bar.
         case 'url': this.url = ev.url; break;
